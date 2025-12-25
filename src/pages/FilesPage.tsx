@@ -1,89 +1,97 @@
-import React, { useState, useRef } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 import {
     Search,
-    Filter,
-    Calendar as CalendarIcon,
     LayoutGrid,
     List as ListIcon,
     Upload,
     FileText,
     Image as ImageIcon,
-    MoreVertical,
     Home,
     Building2,
     User,
-    ChevronLeft,
-    ChevronRight,
-    Loader2
+    Loader2,
+    ExternalLink,
+    Download
 } from 'lucide-react';
+import { collection, addDoc, getDocs, query, orderBy, Timestamp } from 'firebase/firestore';
+import { db } from '../lib/firebase';
 
 interface FileItem {
     id: string;
     name: string;
     size: string;
-    type: 'pdf' | 'image' | 'doc';
-    category: 'Legal' | 'Marketing' | 'Propiedad' | 'Cliente';
-    linkedTo: {
+    type: string;
+    mimeType: string;
+    category: 'Legal' | 'Marketing' | 'Propiedad' | 'Cliente' | 'General';
+    linkedTo?: {
         type: 'property' | 'client' | 'development';
         name: string;
     };
     uploadDate: string;
+    webViewLink: string;
+    webContentLink: string;
 }
-
-// Mock data based on the design
-const MOCK_FILES: FileItem[] = [
-    {
-        id: '1',
-        name: 'Contrato_Arrendamiento_Lomas.pdf',
-        size: '2.4 MB',
-        type: 'pdf',
-        category: 'Legal',
-        linkedTo: { type: 'property', name: 'Casa en Lomas de Chapultepec' },
-        uploadDate: '24 Oct 2023'
-    },
-    {
-        id: '2',
-        name: 'Fotos_Fachada_Polanco.jpg',
-        size: '4.1 MB',
-        type: 'image',
-        category: 'Marketing',
-        linkedTo: { type: 'development', name: 'Depto en Polanco' },
-        uploadDate: '22 Oct 2023'
-    },
-    {
-        id: '3',
-        name: 'Escrituras_Santa_Fe.docx',
-        size: '1.8 MB',
-        type: 'doc',
-        category: 'Propiedad',
-        linkedTo: { type: 'property', name: 'Oficina Santa Fe' },
-        uploadDate: '15 Oct 2023'
-    },
-    {
-        id: '4',
-        name: 'ID_Cliente_JuanPerez.pdf',
-        size: '800 KB',
-        type: 'pdf',
-        category: 'Cliente',
-        linkedTo: { type: 'client', name: 'Juan Perez' },
-        uploadDate: '10 Oct 2023'
-    },
-    {
-        id: '5',
-        name: 'Avaluo_Terreno_Pedregal.pdf',
-        size: '5.2 MB',
-        type: 'pdf',
-        category: 'Legal',
-        linkedTo: { type: 'property', name: 'Terreno en Pedregal' },
-        uploadDate: '05 Oct 2023'
-    }
-];
 
 export default function FilesPage() {
     const [viewMode, setViewMode] = useState<'list' | 'grid'>('list');
     const [searchQuery, setSearchQuery] = useState('');
     const [isUploading, setIsUploading] = useState(false);
+    const [files, setFiles] = useState<FileItem[]>([]);
+    const [loading, setLoading] = useState(true);
     const fileInputRef = useRef<HTMLInputElement>(null);
+
+    const fetchFiles = async () => {
+        try {
+            const q = query(collection(db, 'files'), orderBy('createdAt', 'desc'));
+            const querySnapshot = await getDocs(q);
+            const fetchedFiles: FileItem[] = querySnapshot.docs.map(doc => {
+                const data = doc.data();
+                // Format date safely
+                let dateStr = 'Fecha desconocida';
+                if (data.createdAt) {
+                    if (data.createdAt.toDate) {
+                        dateStr = data.createdAt.toDate().toLocaleDateString('es-ES', { day: 'numeric', month: 'short', year: 'numeric' });
+                    } else if (data.createdAt instanceof Date) {
+                        dateStr = data.createdAt.toLocaleDateString('es-ES', { day: 'numeric', month: 'short', year: 'numeric' });
+                    }
+                }
+
+                // Determine simple type for icon
+                let simpleType = 'doc';
+                if (data.mimeType?.includes('pdf')) simpleType = 'pdf';
+                else if (data.mimeType?.includes('image')) simpleType = 'image';
+
+                // Format size if it's a number (bytes)
+                let sizeStr = data.size;
+                if (typeof data.size === 'number') {
+                    const mb = data.size / (1024 * 1024);
+                    sizeStr = mb < 1 ? `${(data.size / 1024).toFixed(1)} KB` : `${mb.toFixed(1)} MB`;
+                }
+
+                return {
+                    id: doc.id,
+                    name: data.name,
+                    size: sizeStr || 'Unknown',
+                    type: simpleType,
+                    mimeType: data.mimeType,
+                    category: data.category || 'General',
+                    linkedTo: data.linkedTo,
+                    uploadDate: dateStr,
+                    webViewLink: data.webViewLink,
+                    webContentLink: data.webContentLink
+                } as FileItem;
+            });
+            setFiles(fetchedFiles);
+        } catch (error) {
+            console.error("Error fetching files:", error);
+        } finally {
+            setLoading(false);
+        }
+    };
+
+    useEffect(() => {
+        fetchFiles();
+    }, []);
 
     const handleUploadClick = () => {
         fileInputRef.current?.click();
@@ -98,7 +106,7 @@ export default function FilesPage() {
         formData.append('file', file);
 
         try {
-            // Using relative URL to support both local proxy and Vercel deployment
+            // 1. Upload to Drive
             const response = await fetch('/api/upload-to-drive', {
                 method: 'POST',
                 body: formData,
@@ -110,8 +118,21 @@ export default function FilesPage() {
                 throw new Error(data.error || 'Upload failed');
             }
 
-            alert(`Archivo subido con éxito! ID: ${data.fileId}`);
-            // Here you would typically refresh the file list
+            // 2. Save metadata to Firestore
+            await addDoc(collection(db, 'files'), {
+                driveFileId: data.fileId,
+                name: data.name,
+                mimeType: data.mimeType,
+                size: data.size, // in bytes
+                webViewLink: data.webViewLink,
+                webContentLink: data.webContentLink,
+                category: 'General', // Default, could be extended to allow selection
+                createdAt: Timestamp.now(),
+                // You can add linkedTo context here if this component is used within a context (e.g. client detail)
+            });
+
+            alert(`Archivo subido con éxito!`);
+            fetchFiles(); // Refresh list
         } catch (error) {
             console.error('Upload error:', error);
             alert('Error al subir el archivo: ' + (error as Error).message);
@@ -123,11 +144,10 @@ export default function FilesPage() {
         }
     };
 
-    const getFileIcon = (type: FileItem['type']) => {
+    const getFileIcon = (type: string) => {
         switch (type) {
             case 'pdf': return <FileText className="text-red-500" />;
             case 'image': return <ImageIcon className="text-blue-500" />;
-            case 'doc': return <FileText className="text-blue-700" />; // Simplified doc icon
             default: return <FileText className="text-gray-500" />;
         }
     };
@@ -142,13 +162,18 @@ export default function FilesPage() {
         }
     };
 
-    const getLinkedIcon = (type: FileItem['linkedTo']['type']) => {
+    const getLinkedIcon = (type: string) => {
         switch (type) {
             case 'property': return <Home className="w-4 h-4 text-gray-400 mr-2" />;
             case 'development': return <Building2 className="w-4 h-4 text-gray-400 mr-2" />;
             case 'client': return <User className="w-4 h-4 text-gray-400 mr-2" />;
+            default: return null;
         }
     };
+
+    const filteredFiles = files.filter(file =>
+        file.name.toLowerCase().includes(searchQuery.toLowerCase())
+    );
 
     return (
         <div className="p-8 max-w-7xl mx-auto">
@@ -189,16 +214,6 @@ export default function FilesPage() {
                     />
                 </div>
 
-                <button className="flex items-center px-4 py-2.5 bg-white border border-gray-200 rounded-lg text-gray-700 hover:bg-gray-50">
-                    <Filter className="w-5 h-5 mr-2 text-gray-400" />
-                    Todas las categorías
-                </button>
-
-                <button className="flex items-center px-4 py-2.5 bg-white border border-gray-200 rounded-lg text-gray-700 hover:bg-gray-50">
-                    <CalendarIcon className="w-5 h-5 mr-2 text-gray-400" />
-                    Cualquier fecha
-                </button>
-
                 <div className="ml-auto flex bg-white border border-gray-200 rounded-lg p-1">
                     <button
                         onClick={() => setViewMode('list')}
@@ -217,81 +232,88 @@ export default function FilesPage() {
 
             {/* File List */}
             <div className="bg-white rounded-xl border border-gray-200 shadow-sm overflow-hidden">
-                <table className="w-full">
-                    <thead>
-                        <tr className="bg-gray-50 border-b border-gray-200 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">
-                            <th className="px-6 py-4">Nombre del Archivo</th>
-                            <th className="px-6 py-4">Categoría</th>
-                            <th className="px-6 py-4">Vinculado A</th>
-                            <th className="px-6 py-4">Fecha de Subida</th>
-                            <th className="px-6 py-4 text-right">Acciones</th>
-                        </tr>
-                    </thead>
-                    <tbody className="divide-y divide-gray-200">
-                        {MOCK_FILES.map((file) => (
-                            <tr key={file.id} className="hover:bg-gray-50 transition-colors">
-                                <td className="px-6 py-4">
-                                    <div className="flex items-center">
-                                        <div className="p-2 bg-gray-100 rounded-lg mr-4">
-                                            {getFileIcon(file.type)}
-                                        </div>
-                                        <div>
-                                            <p className="font-medium text-gray-900">{file.name}</p>
-                                            <p className="text-xs text-gray-500">{file.size}</p>
-                                        </div>
-                                    </div>
-                                </td>
-                                <td className="px-6 py-4">
-                                    <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${getCategoryColor(file.category)}`}>
-                                        {file.category}
-                                    </span>
-                                </td>
-                                <td className="px-6 py-4">
-                                    <div className="flex items-center text-sm text-gray-600">
-                                        {getLinkedIcon(file.linkedTo.type)}
-                                        {file.linkedTo.name}
-                                    </div>
-                                </td>
-                                <td className="px-6 py-4 text-sm text-gray-500">
-                                    {file.uploadDate}
-                                </td>
-                                <td className="px-6 py-4 text-right">
-                                    <button className="text-gray-400 hover:text-gray-600 p-1 rounded-full hover:bg-gray-100">
-                                        <MoreVertical className="w-5 h-5" />
-                                    </button>
-                                </td>
+                {loading ? (
+                    <div className="p-12 flex justify-center text-gray-500">
+                        <Loader2 className="w-8 h-8 animate-spin" />
+                    </div>
+                ) : filteredFiles.length === 0 ? (
+                    <div className="p-12 text-center text-gray-500">
+                        No hay archivos subidos aún.
+                    </div>
+                ) : (
+                    <table className="w-full">
+                        <thead>
+                            <tr className="bg-gray-50 border-b border-gray-200 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">
+                                <th className="px-6 py-4">Nombre del Archivo</th>
+                                <th className="px-6 py-4">Categoría</th>
+                                <th className="px-6 py-4">Vinculado A</th>
+                                <th className="px-6 py-4">Fecha de Subida</th>
+                                <th className="px-6 py-4 text-right">Acciones</th>
                             </tr>
-                        ))}
-                    </tbody>
-                </table>
-            </div>
-
-            {/* Pagination */}
-            <div className="flex items-center justify-between mt-6">
-                <p className="text-sm text-gray-500">
-                    Mostrando <span className="font-medium">1</span> a <span className="font-medium">5</span> de <span className="font-medium">24</span> resultados
-                </p>
-                <div className="flex items-center space-x-2">
-                    <button className="p-2 border border-gray-200 rounded-lg hover:bg-gray-50 disabled:opacity-50">
-                        <ChevronLeft className="w-5 h-5 text-gray-500" />
-                    </button>
-                    <button className="w-10 h-10 bg-purple-600 text-white rounded-lg flex items-center justify-center font-medium shadow-md shadow-purple-200">
-                        1
-                    </button>
-                    <button className="w-10 h-10 text-gray-600 hover:bg-gray-50 rounded-lg flex items-center justify-center font-medium">
-                        2
-                    </button>
-                    <button className="w-10 h-10 text-gray-600 hover:bg-gray-50 rounded-lg flex items-center justify-center font-medium">
-                        3
-                    </button>
-                    <span className="w-10 h-10 text-gray-400 flex items-center justify-center">...</span>
-                    <button className="w-10 h-10 text-gray-600 hover:bg-gray-50 rounded-lg flex items-center justify-center font-medium">
-                        8
-                    </button>
-                    <button className="p-2 border border-gray-200 rounded-lg hover:bg-gray-50 disabled:opacity-50">
-                        <ChevronRight className="w-5 h-5 text-gray-500" />
-                    </button>
-                </div>
+                        </thead>
+                        <tbody className="divide-y divide-gray-200">
+                            {filteredFiles.map((file) => (
+                                <tr key={file.id} className="hover:bg-gray-50 transition-colors">
+                                    <td className="px-6 py-4">
+                                        <div className="flex items-center">
+                                            <div className="p-2 bg-gray-100 rounded-lg mr-4">
+                                                {getFileIcon(file.type)}
+                                            </div>
+                                            <div>
+                                                <p className="font-medium text-gray-900 truncate max-w-[200px]" title={file.name}>{file.name}</p>
+                                                <p className="text-xs text-gray-500">{file.size}</p>
+                                            </div>
+                                        </div>
+                                    </td>
+                                    <td className="px-6 py-4">
+                                        <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${getCategoryColor(file.category)}`}>
+                                            {file.category}
+                                        </span>
+                                    </td>
+                                    <td className="px-6 py-4">
+                                        {file.linkedTo ? (
+                                            <div className="flex items-center text-sm text-gray-600">
+                                                {getLinkedIcon(file.linkedTo.type)}
+                                                {file.linkedTo.name}
+                                            </div>
+                                        ) : (
+                                            <span className="text-gray-400 text-sm">-</span>
+                                        )}
+                                    </td>
+                                    <td className="px-6 py-4 text-sm text-gray-500">
+                                        {file.uploadDate}
+                                    </td>
+                                    <td className="px-6 py-4 text-right">
+                                        <div className="flex justify-end space-x-2">
+                                            {file.webViewLink && (
+                                                <a
+                                                    href={file.webViewLink}
+                                                    target="_blank"
+                                                    rel="noopener noreferrer"
+                                                    className="text-gray-400 hover:text-blue-600 p-1 rounded-full hover:bg-blue-50"
+                                                    title="Previsualizar"
+                                                >
+                                                    <ExternalLink className="w-5 h-5" />
+                                                </a>
+                                            )}
+                                            {file.webContentLink && (
+                                                <a
+                                                    href={file.webContentLink}
+                                                    target="_blank"
+                                                    rel="noopener noreferrer"
+                                                    className="text-gray-400 hover:text-green-600 p-1 rounded-full hover:bg-green-50"
+                                                    title="Descargar"
+                                                >
+                                                    <Download className="w-5 h-5" />
+                                                </a>
+                                            )}
+                                        </div>
+                                    </td>
+                                </tr>
+                            ))}
+                        </tbody>
+                    </table>
+                )}
             </div>
         </div>
     );

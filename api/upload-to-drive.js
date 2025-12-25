@@ -71,7 +71,7 @@ export default async function handler(req, res) {
                 mimeType: uploadedFile.mimetype,
                 body: fs.createReadStream(uploadedFile.filepath),
             },
-            fields: 'id, name, webViewLink, webContentLink',
+            fields: 'id, name, webViewLink, webContentLink, mimeType, size',
             supportsAllDrives: true,
             supportsTeamDrives: true,
         });
@@ -81,7 +81,10 @@ export default async function handler(req, res) {
             success: true,
             fileId: response.data.id,
             name: response.data.name,
+            mimeType: response.data.mimeType,
             webViewLink: response.data.webViewLink,
+            webContentLink: response.data.webContentLink,
+            size: response.data.size
         });
 
     } catch (error) {
