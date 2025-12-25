@@ -15,6 +15,7 @@ import {
 } from 'lucide-react';
 import { collection, addDoc, getDocs, query, orderBy, Timestamp } from 'firebase/firestore';
 import { db } from '../lib/firebase';
+import { useAuth } from '../context/AuthContext';
 
 interface FileItem {
     id: string;
@@ -33,6 +34,7 @@ interface FileItem {
 }
 
 export default function FilesPage() {
+    const { user } = useAuth();
     const [viewMode, setViewMode] = useState<'list' | 'grid'>('list');
     const [searchQuery, setSearchQuery] = useState('');
     const [isUploading, setIsUploading] = useState(false);
@@ -41,8 +43,11 @@ export default function FilesPage() {
     const fileInputRef = useRef<HTMLInputElement>(null);
 
     const fetchFiles = async () => {
+        if (!user) return;
+
         try {
-            const q = query(collection(db, 'files'), orderBy('createdAt', 'desc'));
+            // Updated to user-scoped collection
+            const q = query(collection(db, `users/${user.uid}/files`), orderBy('createdAt', 'desc'));
             const querySnapshot = await getDocs(q);
             const fetchedFiles: FileItem[] = querySnapshot.docs.map(doc => {
                 const data = doc.data();
@@ -90,8 +95,12 @@ export default function FilesPage() {
     };
 
     useEffect(() => {
-        fetchFiles();
-    }, []);
+        if (user) {
+            fetchFiles();
+        } else {
+            setLoading(false);
+        }
+    }, [user]);
 
     const handleUploadClick = () => {
         fileInputRef.current?.click();
@@ -99,7 +108,7 @@ export default function FilesPage() {
 
     const handleFileChange = async (event: React.ChangeEvent<HTMLInputElement>) => {
         const file = event.target.files?.[0];
-        if (!file) return;
+        if (!file || !user) return;
 
         setIsUploading(true);
         const formData = new FormData();
@@ -118,17 +127,16 @@ export default function FilesPage() {
                 throw new Error(data.error || 'Upload failed');
             }
 
-            // 2. Save metadata to Firestore
-            await addDoc(collection(db, 'files'), {
+            // 2. Save metadata to Firestore (User Scoped)
+            await addDoc(collection(db, `users/${user.uid}/files`), {
                 driveFileId: data.fileId,
                 name: data.name,
                 mimeType: data.mimeType,
                 size: data.size, // in bytes
                 webViewLink: data.webViewLink,
                 webContentLink: data.webContentLink,
-                category: 'General', // Default, could be extended to allow selection
+                category: 'General', // Default
                 createdAt: Timestamp.now(),
-                // You can add linkedTo context here if this component is used within a context (e.g. client detail)
             });
 
             alert(`Archivo subido con éxito!`);
