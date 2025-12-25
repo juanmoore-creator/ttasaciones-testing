@@ -569,21 +569,37 @@ export default function CalendarPage() {
                 className="flex-1 flex flex-col bg-white/80 backdrop-blur-xl rounded-3xl shadow-xl border border-white/50 ring-1 ring-slate-100 overflow-hidden relative z-10"
             >
                 {/* Header */}
-                <div className="p-6 border-b border-slate-100 flex items-center justify-between bg-white/50 backdrop-blur-md sticky top-0 z-20">
-                    <div className="flex items-center gap-6">
-                        <h1 className="text-3xl font-bold text-slate-800 font-heading tracking-tight bg-gradient-to-r from-slate-900 to-slate-600 bg-clip-text text-transparent">
-                            Calendario
-                        </h1>
-                        <div className="flex items-center bg-slate-100/80 rounded-xl p-1.5 border border-slate-200/60 shadow-inner">
-                            <motion.button whileHover={{ scale: 1.1 }} whileTap={{ scale: 0.95 }} onClick={prevMonth} className="p-1.5 hover:bg-white rounded-lg transition-all text-slate-500 shadow-sm hover:shadow-md"><ChevronLeft className="w-5 h-5" /></motion.button>
-                            <span className="px-6 font-bold text-slate-700 min-w-[160px] text-center capitalize text-lg">
-                                {getMonthName(currentDate.getMonth())} {currentDate.getFullYear()}
-                            </span>
-                            <motion.button whileHover={{ scale: 1.1 }} whileTap={{ scale: 0.95 }} onClick={nextMonth} className="p-1.5 hover:bg-white rounded-lg transition-all text-slate-500 shadow-sm hover:shadow-md"><ChevronRight className="w-5 h-5" /></motion.button>
-                        </div>
-                    </div>
+                <div className="px-8 py-6 border-b border-slate-100 flex items-center justify-between bg-white/80 backdrop-blur-xl sticky top-0 z-20">
+                    <h1 className="text-3xl font-extrabold text-slate-900 tracking-tight font-heading">
+                        Calendario
+                    </h1>
 
-                    <div className="flex items-center gap-4">
+                    <div className="flex items-center gap-3">
+                        {/* Date Navigator */}
+                        <div className="flex items-center bg-slate-50 rounded-xl p-1 border border-slate-200 shadow-sm mr-2">
+                            <motion.button whileHover={{ scale: 1.1 }} whileTap={{ scale: 0.95 }} onClick={prevMonth} className="w-8 h-10 flex items-center justify-center hover:bg-white rounded-lg transition-all text-slate-400 hover:text-slate-600 shadow-sm hover:shadow-md"><ChevronLeft className="w-4 h-4" /></motion.button>
+                            <div className="px-3 flex flex-col items-center justify-center min-w-[110px] cursor-default">
+                                <span className="font-bold text-slate-700 capitalize text-sm leading-none mb-0.5">
+                                    {getMonthName(currentDate.getMonth())}
+                                </span>
+                                <span className="text-[11px] font-semibold text-slate-400 leading-none">
+                                    {currentDate.getFullYear()}
+                                </span>
+                            </div>
+                            <motion.button whileHover={{ scale: 1.1 }} whileTap={{ scale: 0.95 }} onClick={nextMonth} className="w-8 h-10 flex items-center justify-center hover:bg-white rounded-lg transition-all text-slate-400 hover:text-slate-600 shadow-sm hover:shadow-md"><ChevronRight className="w-4 h-4" /></motion.button>
+                        </div>
+
+                        {/* Refresh Button */}
+                        <motion.button
+                            whileHover={{ scale: 1.05 }}
+                            whileTap={{ scale: 0.95 }}
+                            onClick={() => { listUpcomingEvents(); listSidebarEvents(); }}
+                            className="w-12 h-12 flex items-center justify-center bg-white border border-slate-200 text-slate-500 hover:text-brand hover:border-brand/30 hover:bg-slate-50 rounded-2xl transition-all shadow-sm"
+                            title="Actualizar calendario"
+                        >
+                            <Loader2 className={`w-5 h-5 ${isLoading ? 'animate-spin' : ''}`} />
+                        </motion.button>
+
                         {error && (
                             <motion.div initial={{ opacity: 0, x: 20 }} animate={{ opacity: 1, x: 0 }} className="text-xs font-semibold text-red-600 bg-red-50 px-3 py-1.5 rounded-lg flex items-center gap-2 border border-red-100">
                                 <AlertCircle className="w-4 h-4" />
@@ -591,41 +607,36 @@ export default function CalendarPage() {
                             </motion.div>
                         )}
 
-                        {/* View Switcher could go here */}
-
-                        <motion.button
-                            whileHover={{ scale: 1.05 }}
-                            whileTap={{ scale: 0.95 }}
-                            onClick={() => { listUpcomingEvents(); listSidebarEvents(); }}
-                            className="p-2.5 bg-white border border-slate-200 text-slate-600 hover:text-brand hover:border-brand/30 hover:bg-slate-50 rounded-xl transition-all shadow-sm"
-                            title="Actualizar calendario"
-                        >
-                            <Loader2 className={`w-5 h-5 ${isLoading ? 'animate-spin' : ''}`} />
-                        </motion.button>
-
-
-
                         {isSignedIn && (
-                            <motion.button
-                                whileHover={{ scale: 1.05 }}
-                                whileTap={{ scale: 0.95 }}
-                                onClick={() => handleCreateNewClick()}
-                                className="flex items-center gap-2 bg-gradient-to-r from-brand to-indigo-600 text-white px-5 py-2.5 rounded-xl hover:shadow-lg hover:shadow-brand/25 transition-all font-semibold shadow-md ml-2"
-                            >
-                                <Plus className="w-5 h-5" />
-                                <span className="hidden sm:inline">Nueva Reunión</span>
-                            </motion.button>
-                        )}
-                        {isSignedIn && (
-                            <motion.button
-                                whileHover={{ scale: 1.05 }}
-                                whileTap={{ scale: 0.95 }}
-                                onClick={handleSignoutClick}
-                                className="flex items-center gap-2 px-4 py-2.5 text-red-600 bg-red-50 hover:bg-red-100 rounded-xl transition-colors font-semibold border border-red-100 ml-2"
-                            >
-                                <ExternalLink className="w-4 h-4" />
-                                <span className="hidden sm:inline">Desincronizar Google Calendar</span>
-                            </motion.button>
+                            <>
+                                {/* New Meeting Button */}
+                                <motion.button
+                                    whileHover={{ scale: 1.05 }}
+                                    whileTap={{ scale: 0.95 }}
+                                    onClick={() => handleCreateNewClick()}
+                                    className="h-12 flex items-center gap-3 bg-[#4338ca] text-white pl-4 pr-6 rounded-xl hover:bg-[#3730a3] transition-all font-bold shadow-md shadow-indigo-200 ml-2"
+                                >
+                                    <Plus className="w-4 h-4 opacity-80" />
+                                    <div className="flex flex-col items-start leading-none gap-0.5">
+                                        <span className="text-[10px] font-medium opacity-80 uppercase tracking-wider">Nueva</span>
+                                        <span className="text-sm">Reunión</span>
+                                    </div>
+                                </motion.button>
+
+                                {/* Unlink Button */}
+                                <motion.button
+                                    whileHover={{ scale: 1.02 }}
+                                    whileTap={{ scale: 0.98 }}
+                                    onClick={handleSignoutClick}
+                                    className="h-12 flex items-center justify-center px-5 text-red-500 bg-[#fff1f2] hover:bg-[#ffe4e6] rounded-xl transition-colors font-medium border border-transparent hover:border-red-100 leading-tight ml-2"
+                                >
+                                    <ExternalLink className="w-3.5 h-3.5 mr-2 opacity-60" />
+                                    <div className="flex flex-col items-start leading-none gap-0.5">
+                                        <span className="text-[10px] font-bold opacity-80 uppercase tracking-wider">Desincronizar</span>
+                                        <span className="text-sm font-semibold">Google Calendar</span>
+                                    </div>
+                                </motion.button>
+                            </>
                         )}
                     </div>
                 </div>
