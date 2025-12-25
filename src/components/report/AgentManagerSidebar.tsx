@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { useSavedAgents } from '../../hooks/useSavedAgents';
-import { Trash2, Save, User, FileText, Check } from 'lucide-react';
+import { Trash2, Save, User } from 'lucide-react';
 
 interface AgentManagerSidebarProps {
     data: any;

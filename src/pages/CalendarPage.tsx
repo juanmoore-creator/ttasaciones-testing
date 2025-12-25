@@ -6,6 +6,13 @@ import { db } from '../lib/firebase';
 import { doc, setDoc, getDoc } from 'firebase/firestore';
 import { generateMonthGrid, getMonthName, isSameDay } from '../utils/calendarUtils';
 
+declare global {
+    interface Window {
+        gapi: any;
+        google: any;
+    }
+}
+
 // Types for Google Calendar Events
 interface CalendarEvent {
     id: string;
@@ -38,7 +45,6 @@ export default function CalendarPage() {
     const [isGisLoaded, setIsGisLoaded] = useState(false);
     const [tokenClient, setTokenClient] = useState<any>(null);
     const [error, setError] = useState<string | null>(null);
-    const [calendarTimezone, setCalendarTimezone] = useState<string>(Intl.DateTimeFormat().resolvedOptions().timeZone);
 
     // Calendar UI State
     const [currentDate, setCurrentDate] = useState(new Date());
@@ -115,24 +121,7 @@ export default function CalendarPage() {
         }
     }, [isGisLoaded, isGapiLoaded, user]);
 
-    useEffect(() => {
-        const fetchTimezone = async () => {
-            if (isSignedIn && isGapiLoaded) {
-                try {
-                    const calendar = await window.gapi.client.calendar.calendars.get({
-                        'calendarId': 'primary'
-                    });
-                    if (calendar.result.timeZone) {
-                        setCalendarTimezone(calendar.result.timeZone);
-                        console.log("Calendar Timezone fetched:", calendar.result.timeZone);
-                    }
-                } catch (e) {
-                    console.error("Failed to fetch calendar timezone", e);
-                }
-            }
-        };
-        fetchTimezone();
-    }, [isSignedIn, isGapiLoaded]);
+
 
     useEffect(() => {
         const restoreSession = async () => {
