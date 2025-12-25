@@ -19,35 +19,52 @@ export default async function handler(req, res) {
 
     try {
         // 1. Authenticate with Google
-        const clientEmail = process.env.GOOGLE_SERVICE_ACCOUNT_EMAIL;
-        const rawKey = process.env.GOOGLE_PRIVATE_KEY || "";
+        let authClient;
 
-        if (!clientEmail || !rawKey) {
-            console.error("Missing Google Credentials");
-            res.status(500).json({ error: 'Server configuration error: Missing Google Credentials' });
-            return;
+        // Strategy A: OAuth2 (User Impersonation) - PREFERRED for Personal Drive Folders
+        // Requires: GOOGLE_CLIENT_ID, GOOGLE_CLIENT_SECRET, GOOGLE_REFRESH_TOKEN
+        if (process.env.GOOGLE_REFRESH_TOKEN && process.env.GOOGLE_CLIENT_ID && process.env.GOOGLE_CLIENT_SECRET) {
+            console.log("Using OAuth2 User Authentication");
+            const oAuth2Client = new google.auth.OAuth2(
+                process.env.GOOGLE_CLIENT_ID,
+                process.env.GOOGLE_CLIENT_SECRET,
+                'https://developers.google.com/oauthplayground' // Redirect URI
+            );
+
+            oAuth2Client.setCredentials({
+                refresh_token: process.env.GOOGLE_REFRESH_TOKEN
+            });
+
+            authClient = oAuth2Client;
         }
+        // Strategy B: Service Account - Fallback
+        // Works best for Shared Drives or if Service Account is invited to the folder (but consumes SA quota if not shared drive)
+        else {
+            console.log("Using Service Account Authentication");
+            const clientEmail = process.env.GOOGLE_SERVICE_ACCOUNT_EMAIL;
+            const rawKey = process.env.GOOGLE_PRIVATE_KEY || "";
 
-        // 1. Delete accidental quotes at start/end
-        const cleanKey = rawKey.replace(/^['"]|['"]$/g, '');
-        // 2. Replace escaped newlines
-        const formattedKey = cleanKey.replace(/\\n/g, '\n');
+            if (!clientEmail || !rawKey) {
+                console.error("Missing Google Credentials");
+                res.status(500).json({ error: 'Server configuration error: Missing Google Credentials' });
+                return;
+            }
 
-        // Debug: Log email presence and key start
-        console.log("DEBUG: Email present:", !!clientEmail);
-        console.log("DEBUG: Processed Key Start:", formattedKey.trim().substring(0, 20));
+            // 1. Delete accidental quotes at start/end
+            const cleanKey = rawKey.replace(/^['"]|['"]$/g, '');
+            // 2. Replace escaped newlines
+            const formattedKey = cleanKey.replace(/\\n/g, '\n');
 
-        // Use GoogleAuth with the cleaned key. Use 'credentials' object explicitly.
-        const auth = new google.auth.GoogleAuth({
-            credentials: {
-                client_email: clientEmail,
-                private_key: formattedKey.trim(),
-            },
-            scopes: ['https://www.googleapis.com/auth/drive'],
-        });
+            const auth = new google.auth.GoogleAuth({
+                credentials: {
+                    client_email: clientEmail,
+                    private_key: formattedKey.trim(),
+                },
+                scopes: ['https://www.googleapis.com/auth/drive'],
+            });
 
-        // Get the authenticated client explicitly (this validates credentials immediately)
-        const authClient = await auth.getClient();
+            authClient = await auth.getClient();
+        }
 
         const drive = google.drive({ version: 'v3', auth: authClient });
 
