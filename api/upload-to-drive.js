@@ -18,55 +18,29 @@ export default async function handler(req, res) {
     }
 
     try {
-        // 1. Authenticate with Google
-        let authClient;
+        // FORZAR ESTRATEGIA A: OAuth2
+        const clientId = process.env.GOOGLE_CLIENT_ID;
+        const clientSecret = process.env.GOOGLE_CLIENT_SECRET;
+        const refreshToken = process.env.GOOGLE_REFRESH_TOKEN;
 
-        // Strategy A: OAuth2 (User Impersonation) - PREFERRED for Personal Drive Folders
-        // Requires: GOOGLE_CLIENT_ID, GOOGLE_CLIENT_SECRET, GOOGLE_REFRESH_TOKEN
-        if (process.env.GOOGLE_REFRESH_TOKEN && process.env.GOOGLE_CLIENT_ID && process.env.GOOGLE_CLIENT_SECRET) {
-            console.log("Using OAuth2 User Authentication");
-            const oAuth2Client = new google.auth.OAuth2(
-                process.env.GOOGLE_CLIENT_ID,
-                process.env.GOOGLE_CLIENT_SECRET,
-                'https://developers.google.com/oauthplayground' // Redirect URI
-            );
-
-            oAuth2Client.setCredentials({
-                refresh_token: process.env.GOOGLE_REFRESH_TOKEN
+        // Validación manual para ver qué falta en los logs
+        if (!clientId || !clientSecret || !refreshToken) {
+            console.error("ERROR: Faltan variables de OAuth2:", {
+                hasClientId: !!clientId,
+                hasClientSecret: !!clientSecret,
+                hasRefreshToken: !!refreshToken
             });
-
-            authClient = oAuth2Client;
-        }
-        // Strategy B: Service Account - Fallback
-        // Works best for Shared Drives or if Service Account is invited to the folder (but consumes SA quota if not shared drive)
-        else {
-            console.log("Using Service Account Authentication");
-            const clientEmail = process.env.GOOGLE_SERVICE_ACCOUNT_EMAIL;
-            const rawKey = process.env.GOOGLE_PRIVATE_KEY || "";
-
-            if (!clientEmail || !rawKey) {
-                console.error("Missing Google Credentials");
-                res.status(500).json({ error: 'Server configuration error: Missing Google Credentials' });
-                return;
-            }
-
-            // 1. Delete accidental quotes at start/end
-            const cleanKey = rawKey.replace(/^['"]|['"]$/g, '');
-            // 2. Replace escaped newlines
-            const formattedKey = cleanKey.replace(/\\n/g, '\n');
-
-            const auth = new google.auth.GoogleAuth({
-                credentials: {
-                    client_email: clientEmail,
-                    private_key: formattedKey.trim(),
-                },
-                scopes: ['https://www.googleapis.com/auth/drive'],
-            });
-
-            authClient = await auth.getClient();
+            throw new Error("Configuración OAuth2 incompleta en Vercel");
         }
 
-        const drive = google.drive({ version: 'v3', auth: authClient });
+        const oAuth2Client = new google.auth.OAuth2(
+            clientId,
+            clientSecret,
+            'https://developers.google.com/oauthplayground'
+        );
+
+        oAuth2Client.setCredentials({ refresh_token: refreshToken });
+        const drive = google.drive({ version: 'v3', auth: oAuth2Client });
 
         // 2. Parse the incoming form data
         const form = new IncomingForm();
