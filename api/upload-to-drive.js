@@ -71,20 +71,18 @@ export default async function handler(req, res) {
         }
 
         // 3. Upload to Google Drive
-        const fileMetadata = {
-            name: uploadedFile.originalFilename || 'uploaded_file',
-            parents: process.env.GOOGLE_DRIVE_FOLDER_ID ? [process.env.GOOGLE_DRIVE_FOLDER_ID] : undefined,
-        };
-
-        const media = {
-            mimeType: uploadedFile.mimetype,
-            body: fs.createReadStream(uploadedFile.filepath),
-        };
-
         const response = await drive.files.create({
-            requestBody: fileMetadata,
-            media: media,
+            requestBody: {
+                name: uploadedFile.originalFilename || 'documento_inmobiliario',
+                parents: [process.env.GOOGLE_DRIVE_FOLDER_ID],
+            },
+            media: {
+                mimeType: uploadedFile.mimetype,
+                body: fs.createReadStream(uploadedFile.filepath),
+            },
             fields: 'id, name, webViewLink, webContentLink',
+            supportsAllDrives: true,
+            supportsTeamDrives: true,
         });
 
         // 4. Return the result
