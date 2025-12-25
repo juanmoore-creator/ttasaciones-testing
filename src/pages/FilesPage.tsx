@@ -98,8 +98,8 @@ export default function FilesPage() {
         formData.append('file', file);
 
         try {
-            // Using the full URL to ensure we hit the local server if running in dev
-            const response = await fetch('http://localhost:3000/api/upload-to-drive', {
+            // Using relative URL to support both local proxy and Vercel deployment
+            const response = await fetch('/api/upload-to-drive', {
                 method: 'POST',
                 body: formData,
             });

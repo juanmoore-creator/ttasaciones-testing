@@ -6,31 +6,9 @@ import authHandler from './api/imagekit-auth.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
-// Simple .env loader since dotenv might not be installed
-console.log("Loading environment variables...");
-try {
-    const envPath = path.join(__dirname, '.env');
-    if (fs.existsSync(envPath)) {
-        const envContent = fs.readFileSync(envPath, 'utf-8');
-        envContent.split('\n').forEach(line => {
-            const match = line.match(/^\s*([\w\.\-]+)\s*=\s*(.*)?\s*$/);
-            if (match) {
-                const key = match[1];
-                let value = match[2] || '';
-                // Remove quotes if present
-                if ((value.startsWith('"') && value.endsWith('"')) || (value.startsWith("'") && value.endsWith("'"))) {
-                    value = value.slice(1, -1);
-                }
-                process.env[key] = value;
-            }
-        });
-        console.log("Loaded .env file successfully.");
-    } else {
-        console.warn("No .env file found at:", envPath);
-    }
-} catch (e) {
-    console.error("Could not load .env file", e);
-}
+import 'dotenv/config'; // Loads .env file using dotenv
+
+console.log("Environment variables loaded via dotenv.");
 
 const PORT = 3000;
 

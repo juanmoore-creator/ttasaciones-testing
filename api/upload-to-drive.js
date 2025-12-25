@@ -20,23 +20,36 @@ export default async function handler(req, res) {
     try {
         // 1. Authenticate with Google
         const clientEmail = process.env.GOOGLE_SERVICE_ACCOUNT_EMAIL;
-        const privateKey = process.env.GOOGLE_PRIVATE_KEY?.replace(/\\n/g, '\n'); // Fix newlines if passed as string
+        const rawKey = process.env.GOOGLE_PRIVATE_KEY || "";
 
-        if (!clientEmail || !privateKey) {
+        if (!clientEmail || !rawKey) {
             console.error("Missing Google Credentials");
             res.status(500).json({ error: 'Server configuration error: Missing Google Credentials' });
             return;
         }
 
+        // 1. Delete accidental quotes at start/end
+        const cleanKey = rawKey.replace(/^['"]|['"]$/g, '');
+        // 2. Replace escaped newlines
+        const formattedKey = cleanKey.replace(/\\n/g, '\n');
+
+        // Debug: Log email presence and key start
+        console.log("DEBUG: Email present:", !!clientEmail);
+        console.log("DEBUG: Processed Key Start:", formattedKey.trim().substring(0, 20));
+
+        // Use GoogleAuth with the cleaned key. Use 'credentials' object explicitly.
         const auth = new google.auth.GoogleAuth({
             credentials: {
                 client_email: clientEmail,
-                private_key: privateKey,
+                private_key: formattedKey.trim(),
             },
-            scopes: ['https://www.googleapis.com/auth/drive.file'],
+            scopes: ['https://www.googleapis.com/auth/drive'],
         });
 
-        const drive = google.drive({ version: 'v3', auth });
+        // Get the authenticated client explicitly (this validates credentials immediately)
+        const authClient = await auth.getClient();
+
+        const drive = google.drive({ version: 'v3', auth: authClient });
 
         // 2. Parse the incoming form data
         const form = new IncomingForm();
@@ -60,7 +73,7 @@ export default async function handler(req, res) {
         // 3. Upload to Google Drive
         const fileMetadata = {
             name: uploadedFile.originalFilename || 'uploaded_file',
-            // optional: parents: ['folder_id_if_needed']
+            parents: process.env.GOOGLE_DRIVE_FOLDER_ID ? [process.env.GOOGLE_DRIVE_FOLDER_ID] : undefined,
         };
 
         const media = {
@@ -69,7 +82,7 @@ export default async function handler(req, res) {
         };
 
         const response = await drive.files.create({
-            resource: fileMetadata,
+            requestBody: fileMetadata,
             media: media,
             fields: 'id, name, webViewLink, webContentLink',
         });
