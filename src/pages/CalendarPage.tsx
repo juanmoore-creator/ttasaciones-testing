@@ -1,5 +1,5 @@
-import { useState, useEffect } from 'react';
-import { Clock, Loader2, ExternalLink, AlertCircle, Plus, X, Save, ChevronLeft, ChevronRight, Trash2, Pencil } from 'lucide-react';
+import { useState, useEffect, useRef } from 'react';
+import { Clock, Loader2, ExternalLink, AlertCircle, Plus, X, Save, ChevronLeft, ChevronRight, Trash2, Pencil, Calendar as CalendarIcon, MapPin, MoreVertical, RotateCw } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useAuth } from '../context/AuthContext';
 import { db } from '../lib/firebase';
@@ -50,8 +50,8 @@ export default function CalendarPage() {
     const [currentDate, setCurrentDate] = useState(new Date());
 
     // Day Details Modal State
-    const [selectedDate, setSelectedDate] = useState<Date | null>(null);
-    const [isDayDetailsOpen, setIsDayDetailsOpen] = useState(false);
+    const [selectedDate, setSelectedDate] = useState<Date | null>(new Date()); // Default to today for mobile
+    const [isDayDetailsOpen, setIsDayDetailsOpen] = useState(false); // Only for desktop interaction
 
     // Add/Edit Event Modal State
     const [isModalOpen, setIsModalOpen] = useState(false);
@@ -64,6 +64,8 @@ export default function CalendarPage() {
         startDateTime: '',
         endDateTime: ''
     });
+
+    const stripContainerRef = useRef<HTMLDivElement>(null);
 
     // --- Google Calendar Logic ---
 
@@ -255,6 +257,21 @@ export default function CalendarPage() {
         }
     }, [currentDate, isSignedIn, isGapiLoaded]);
 
+    // Auto scroll to current day in strip
+    useEffect(() => {
+        // Add a small delay to ensure DOM is fully rendered/layout is settled
+        const timer = setTimeout(() => {
+            if (stripContainerRef.current) {
+                const todayEl = stripContainerRef.current.querySelector('[data-is-today="true"]');
+                if (todayEl) {
+                    todayEl.scrollIntoView({ behavior: 'smooth', inline: 'center', block: 'nearest' });
+                }
+            }
+        }, 300); // 300ms delay
+
+        return () => clearTimeout(timer);
+    }, [currentDate]);
+
 
     const handleSaveEvent = async (e: React.FormEvent) => {
         e.preventDefault();
@@ -400,7 +417,20 @@ export default function CalendarPage() {
         setCurrentDate(new Date(currentDate.getFullYear(), currentDate.getMonth() + 1, 1));
     };
 
-    const getEventsForDate = (date: Date) => {
+    const prevWeek = () => {
+        const newDate = new Date(currentDate);
+        newDate.setDate(currentDate.getDate() - 7);
+        setCurrentDate(newDate);
+    };
+
+    const nextWeek = () => {
+        const newDate = new Date(currentDate);
+        newDate.setDate(currentDate.getDate() + 7);
+        setCurrentDate(newDate);
+    };
+
+    const getEventsForDate = (date: Date | null) => {
+        if (!date) return [];
         return events.filter(event => {
             const eventStart = new Date(event.start.dateTime || event.start.date || '');
             return isSameDay(eventStart, date);
@@ -415,7 +445,39 @@ export default function CalendarPage() {
         });
     };
 
+    const formatAmPm = (isoString?: string) => {
+        if (!isoString) return { time: '', ampm: '' };
+        const date = new Date(isoString);
+        let hours = date.getHours();
+        const ampm = hours >= 12 ? 'PM' : 'AM';
+        hours = hours % 12;
+        hours = hours ? hours : 12; // the hour '0' should be '12'
+        const minutes = date.getMinutes().toString().padStart(2, '0');
+        return { time: `${hours}:${minutes}`, ampm };
+    };
+
+
+    const generateWeekGrid = (date: Date) => {
+        const startOfWeek = new Date(date);
+        const day = startOfWeek.getDay(); // 0 (Sun) - 6 (Sat)
+        const diff = day === 0 ? 6 : day - 1; // Adjust to 0 (Mon) - 6 (Sun)
+        startOfWeek.setDate(startOfWeek.getDate() - diff); // Set to Monday
+
+        const days = [];
+        for (let i = 0; i < 7; i++) {
+            const d = new Date(startOfWeek);
+            d.setDate(startOfWeek.getDate() + i);
+            days.push({
+                date: d,
+                isCurrentMonth: d.getMonth() === date.getMonth(),
+                isToday: isSameDay(new Date(), d)
+            });
+        }
+        return days;
+    };
+
     const gridDays = generateMonthGrid(currentDate.getFullYear(), currentDate.getMonth());
+    const weekDays = generateWeekGrid(currentDate);
 
     // --- Render ---
 
@@ -430,6 +492,7 @@ export default function CalendarPage() {
     if (!isSignedIn) {
         return (
             <div className="flex h-[calc(100vh-6rem)] items-center justify-center p-4 relative bg-gray-50/50">
+                {/* ... (Kept completely same as before for Login) ... */}
                 <div className="absolute top-0 left-0 w-full h-full overflow-hidden pointer-events-none z-0">
                     <div className="absolute top-[-10%] left-[-10%] w-[40%] h-[40%] rounded-full bg-brand/5 blur-3xl" />
                     <div className="absolute bottom-[-10%] right-[-10%] w-[40%] h-[40%] rounded-full bg-indigo-500/5 blur-3xl" />
@@ -461,30 +524,172 @@ export default function CalendarPage() {
                         <img src="https://calendar.google.com/googlecalendar/images/favicon_v2014_1.ico" alt="" className="w-5 h-5 brightness-0 invert" />
                         Sincronizar ahora
                     </motion.button>
-
-                    <div className="mt-6 flex items-center gap-2 text-xs text-slate-400 font-medium bg-slate-50 px-3 py-1.5 rounded-lg border border-slate-100">
-                        <AlertCircle className="w-3.5 h-3.5" />
-                        <span>Requiere acceso a tu calendario principal</span>
-                    </div>
                 </motion.div>
             </div>
         );
     }
 
     return (
-        <div className="flex min-h-[calc(100vh-6rem)] gap-6 p-4 relative bg-gray-50/50">
+        <div className="flex flex-col lg:flex-row min-h-[calc(100vh-6rem)] gap-6 p-4 relative bg-gray-50/50">
             {/* Background Decorations */}
             <div className="absolute top-0 left-0 w-full h-full overflow-hidden pointer-events-none z-0">
                 <div className="absolute top-[-10%] left-[-10%] w-[40%] h-[40%] rounded-full bg-brand/5 blur-3xl" />
                 <div className="absolute bottom-[-10%] right-[-10%] w-[40%] h-[40%] rounded-full bg-indigo-500/5 blur-3xl" />
             </div>
 
-            {/* Sidebar */}
+            {/* --- MOBILE VIEW --- */}
+            <div className="lg:hidden flex flex-col w-full z-10 gap-4">
+                {/* Mobile Header */}
+                {/* Mobile Header */}
+                <div className="flex items-center justify-between bg-white/80 backdrop-blur-xl p-4 rounded-3xl shadow-sm border border-slate-100">
+                    <div className="flex items-center gap-2">
+                        <motion.button whileTap={{ scale: 0.95 }} onClick={prevWeek} className="w-10 h-10 flex items-center justify-center bg-white rounded-xl shadow-sm border border-slate-200 text-slate-600">
+                            <ChevronLeft className="w-5 h-5" />
+                        </motion.button>
+                        <span className="text-lg font-bold text-slate-800 capitalize">
+                            {getMonthName(currentDate.getMonth())} {currentDate.getFullYear()}
+                        </span>
+                        <motion.button whileTap={{ scale: 0.95 }} onClick={nextWeek} className="w-10 h-10 flex items-center justify-center bg-white rounded-xl shadow-sm border border-slate-200 text-slate-600">
+                            <ChevronRight className="w-5 h-5" />
+                        </motion.button>
+                    </div>
+
+                    <div className="flex gap-2">
+                        <motion.button whileTap={{ scale: 0.95 }} onClick={() => { listUpcomingEvents(); listSidebarEvents(); }} className="w-10 h-10 flex items-center justify-center bg-white rounded-xl shadow-sm border border-slate-200 text-slate-600">
+                            <RotateCw className={`w-5 h-5 ${isLoading ? 'animate-spin' : ''}`} />
+                        </motion.button>
+                        <motion.button whileTap={{ scale: 0.95 }} onClick={nextMonth} className="w-10 h-10 flex items-center justify-center bg-brand rounded-full shadow-lg shadow-brand/20 text-white">
+                            <Plus onClick={() => handleCreateNewClick(selectedDate || new Date())} className="w-6 h-6" />
+                        </motion.button>
+                    </div>
+                </div>
+
+                {/* Calendar Strip */}
+                <div className="flex items-center justify-between px-1 pb-2 gap-1">
+                    <motion.button whileTap={{ scale: 0.9 }} onClick={prevWeek} className="p-1 text-slate-400 hover:text-brand flex-shrink-0">
+                        <ChevronLeft className="w-6 h-6" />
+                    </motion.button>
+
+                    <div
+                        ref={stripContainerRef}
+                        className="grid grid-cols-7 gap-1 flex-1"
+                    >
+                        {weekDays.map((day, idx) => {
+                            const isSelected = selectedDate && isSameDay(selectedDate, day.date);
+                            const isToday = isSameDay(new Date(), day.date);
+
+                            return (
+                                <motion.div
+                                    key={idx}
+                                    layoutId={isSelected ? 'selected-day' : undefined}
+                                    onClick={() => setSelectedDate(day.date)}
+                                    data-is-today={isToday}
+                                    className={`
+                                        flex flex-col items-center justify-center h-[80px] cursor-pointer transition-all duration-300 relative rounded-2xl
+                                    `}
+                                >
+                                    <div className={`
+                                        flex flex-col items-center justify-center w-10 h-14 rounded-2xl
+                                        ${isSelected ? 'bg-brand text-white shadow-lg shadow-brand/30 scale-110 z-10' : 'text-slate-600'}
+                                        ${!day.isCurrentMonth && !isSelected ? 'opacity-30' : ''}
+                                    `}>
+                                        <span className={`text-[9px] uppercase font-bold tracking-wider mb-0.5 ${isSelected ? 'text-white/90' : 'text-slate-400'}`}>
+                                            {day.date.toLocaleDateString('es-AR', { weekday: 'short' }).replace('.', '').slice(0, 1)}
+                                        </span>
+                                        <span className={`text-lg font-black leading-none ${isSelected ? 'text-white' : 'text-slate-800'}`}>
+                                            {day.date.getDate()}
+                                        </span>
+                                    </div>
+                                    {isToday && !isSelected && !getEventsForDate(day.date).length && <span className="w-1.5 h-1.5 bg-brand rounded-full mt-1.5" />}
+                                    {getEventsForDate(day.date).length > 0 && !isSelected && <span className="w-1.5 h-1.5 bg-indigo-500 rounded-full mt-1.5" />}
+                                    {isSelected && <motion.span layoutId="active-dot" className="w-1.5 h-1.5 bg-white rounded-full mt-1.5" />}
+                                </motion.div>
+                            )
+                        })}
+                    </div>
+
+                    <motion.button whileTap={{ scale: 0.9 }} onClick={nextWeek} className="p-1 text-slate-400 hover:text-brand flex-shrink-0">
+                        <ChevronRight className="w-6 h-6" />
+                    </motion.button>
+                </div>
+
+                {/* Agenda List */}
+                <div className="flex-1 flex flex-col">
+                    <h3 className="text-xs font-bold text-slate-400 uppercase tracking-widest mb-4 pl-1">
+                        Agenda del día
+                    </h3>
+
+                    <div className="space-y-4 pb-20">
+                        {selectedDate && getEventsForDate(selectedDate).length > 0 ? (
+                            getEventsForDate(selectedDate).sort((a, b) => (a.start.dateTime || '').localeCompare(b.start.dateTime || '')).map(event => {
+                                const { time, ampm } = formatAmPm(event.start.dateTime);
+                                return (
+                                    <motion.div
+                                        key={event.id}
+                                        initial={{ opacity: 0, y: 10 }}
+                                        animate={{ opacity: 1, y: 0 }}
+                                        className="bg-white p-5 rounded-3xl shadow-sm border border-slate-100 flex gap-5 items-start relative overflow-hidden group"
+                                    >
+                                        <div className="flex flex-col items-center min-w-[3rem] pt-1">
+                                            <span className="text-lg font-black text-slate-800 leading-none">{time}</span>
+                                            <span className="text-[10px] font-bold text-slate-400 uppercase">{ampm}</span>
+                                        </div>
+                                        <div className="w-px self-stretch bg-slate-100 border-l border-dashed border-slate-200 mx-1"></div>
+                                        <div className="flex-1 min-w-0 pb-1">
+                                            <h4 className="font-bold text-slate-800 text-lg leading-tight mb-1">{event.summary}</h4>
+                                            {event.location && (
+                                                <div className="flex items-center gap-1.5 text-xs text-slate-500 mb-2 font-medium">
+                                                    <MapPin className="w-3.5 h-3.5 text-slate-400" />
+                                                    <span className="truncate">{event.location}</span>
+                                                </div>
+                                            )}
+
+                                            <div className="flex items-center gap-2 mt-3">
+                                                {/* Tags mockups based on keywords */}
+                                                {event.summary.toLowerCase().includes('visita') && (
+                                                    <span className="text-[10px] font-bold px-2 py-1 rounded-full bg-blue-50 text-blue-600">Confirmada</span>
+                                                )}
+                                                {event.summary.toLowerCase().includes('firma') && (
+                                                    <span className="text-[10px] font-bold px-2 py-1 rounded-full bg-purple-50 text-purple-600">Oficina</span>
+                                                )}
+                                                {(!event.summary.toLowerCase().includes('visita') && !event.summary.toLowerCase().includes('firma')) && (
+                                                    <span className="text-[10px] font-bold px-2 py-1 rounded-full bg-orange-50 text-orange-600">Pendiente</span>
+                                                )}
+                                            </div>
+                                        </div>
+
+                                        {/* Actions Menu Trigger */}
+                                        <button onClick={() => handleEditClick(event)} className="p-2 text-slate-300 hover:text-slate-600 transition-colors">
+                                            <MoreVertical className="w-5 h-5" />
+                                        </button>
+
+                                        {/* Accent Line */}
+                                        <div className="absolute left-0 top-6 bottom-6 w-1 rounded-r-full bg-brand"></div>
+                                    </motion.div>
+                                )
+                            })
+                        ) : (
+                            <div className="flex flex-col items-center justify-center py-16 text-center">
+                                <div className="w-24 h-24 bg-white rounded-full flex items-center justify-center shadow-sm border border-slate-100 mb-4">
+                                    <CalendarIcon className="w-10 h-10 text-slate-200" />
+                                </div>
+                                <h3 className="text-slate-800 font-bold text-lg">Día libre</h3>
+                                <p className="text-slate-400 text-sm max-w-[200px]">No tienes eventos para este día. ¡Disfruta tu tiempo!</p>
+                            </div>
+                        )}
+
+                        {/* Bottom Spacer for FAB if needed */}
+                        <div className="h-10"></div>
+                    </div>
+                </div>
+            </div>
+
+            {/* --- DESKTOP SIDEBAR (Untouched logic, hidden on mobile) --- */}
             <motion.div
                 initial={{ opacity: 0, x: -20 }}
                 animate={{ opacity: 1, x: 0 }}
                 transition={{ duration: 0.4 }}
-                className="w-80 flex flex-col gap-6 shrink-0 z-10 overflow-y-auto pr-2 custom-scrollbar"
+                className="hidden lg:flex w-80 flex-col gap-6 shrink-0 z-10"
             >
                 {/* Mini Calendar */}
                 <div className="bg-white/80 backdrop-blur-xl p-6 rounded-3xl shadow-lg border border-white/50 ring-1 ring-slate-100">
@@ -561,18 +766,20 @@ export default function CalendarPage() {
                 </div>
             </motion.div>
 
-            {/* Main Content */}
+            {/* --- DESKTOP MAIN CONTENT (Hidden on mobile) --- */}
             <motion.div
                 initial={{ opacity: 0, y: 20 }}
                 animate={{ opacity: 1, y: 0 }}
                 transition={{ duration: 0.4, delay: 0.1 }}
-                className="flex-1 flex flex-col bg-white/80 backdrop-blur-xl rounded-3xl shadow-xl border border-white/50 ring-1 ring-slate-100 overflow-hidden relative z-10"
+                className="hidden lg:flex flex-1 flex-col bg-white/80 backdrop-blur-xl rounded-3xl shadow-xl border border-white/50 ring-1 ring-slate-100 overflow-hidden relative z-10"
             >
                 {/* Header */}
                 <div className="px-8 py-6 border-b border-slate-100 flex items-center justify-between bg-white/80 backdrop-blur-xl sticky top-0 z-20">
-                    <h1 className="text-3xl font-extrabold text-slate-900 tracking-tight font-heading">
-                        Calendario
-                    </h1>
+                    <div className="flex items-center gap-3">
+                        <h1 className="text-3xl font-extrabold text-slate-900 tracking-tight font-heading">
+                            Calendario
+                        </h1>
+                    </div>
 
                     <div className="flex items-center gap-3">
                         {/* Date Navigator */}
@@ -716,7 +923,7 @@ export default function CalendarPage() {
                     </div>
                 </div>
 
-                {/* Day Details Modal (Inline Local Modal) */}
+                {/* Day Details Modal (Inline Local Modal) FOR DESKTOP */}
                 <AnimatePresence>
                     {isDayDetailsOpen && selectedDate && (
                         <motion.div
@@ -820,7 +1027,7 @@ export default function CalendarPage() {
                 </AnimatePresence>
             </motion.div>
 
-            {/* Modal for Create/Edit */}
+            {/* Modal for Create/Edit (Shared) */}
             <AnimatePresence>
                 {isModalOpen && (
                     <motion.div
@@ -834,7 +1041,7 @@ export default function CalendarPage() {
                             animate={{ scale: 1, opacity: 1, y: 0 }}
                             exit={{ scale: 0.9, opacity: 0, y: 20 }}
                             transition={{ type: "spring", stiffness: 300, damping: 25 }}
-                            className="bg-white rounded-3xl shadow-2xl w-full max-w-lg p-8 ring-1 ring-white/20"
+                            className="bg-white rounded-3xl shadow-2xl w-full max-w-lg p-8 ring-1 ring-white/20 max-h-[90vh] overflow-y-auto custom-scrollbar"
                         >
                             <div className="flex justify-between items-center mb-8 border-b border-slate-100 pb-4">
                                 <h3 className="text-2xl font-bold text-gray-900 font-heading">
@@ -920,6 +1127,6 @@ export default function CalendarPage() {
                     </motion.div>
                 )}
             </AnimatePresence>
-        </div>
+        </div >
     );
 }
