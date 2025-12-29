@@ -1,6 +1,8 @@
 import { defineConfig, loadEnv } from 'vite'
 import react from '@vitejs/plugin-react'
+import { VitePWA } from 'vite-plugin-pwa'
 import ImageKit from 'imagekit'
+import path from 'path'
 
 // https://vite.dev/config/
 export default defineConfig(({ mode }) => {
@@ -9,6 +11,30 @@ export default defineConfig(({ mode }) => {
   return {
     plugins: [
       react(),
+      VitePWA({
+        registerType: 'autoUpdate',
+        includeAssets: ['favicon.ico', 'apple-touch-icon.png', 'mask-icon.svg'],
+        manifest: {
+          name: 'Tasaciones App',
+          short_name: 'Tasaciones',
+          description: 'Aplicación de Gestión de Tasaciones',
+          theme_color: '#ffffff',
+          display: 'standalone',
+          background_color: '#ffffff',
+          icons: [
+            {
+              src: 'logo_lpz.png',
+              sizes: '192x192',
+              type: 'image/png'
+            },
+            {
+              src: 'logo_lpz.png',
+              sizes: '512x512',
+              type: 'image/png'
+            }
+          ]
+        }
+      }),
       {
         name: 'configure-server',
         configureServer(server) {
@@ -45,6 +71,11 @@ export default defineConfig(({ mode }) => {
         }
       }
     ],
+    resolve: {
+      alias: {
+        "@": path.resolve(__dirname, "./src"),
+      },
+    },
     server: {
       proxy: {
         '/api': {
