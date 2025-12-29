@@ -54,7 +54,7 @@ const ControlPanel = () => {
     const [isGapiLoaded, setIsGapiLoaded] = useState(false);
     const [isGisLoaded, setIsGisLoaded] = useState(false);
     const [tokenClient, setTokenClient] = useState<any>(null);
-    const [error, setError] = useState<string | null>(null);
+    const [, setError] = useState<string | null>(null);
 
     // DEBUG: Log credentials to verify
     useEffect(() => {
