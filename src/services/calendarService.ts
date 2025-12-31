@@ -83,15 +83,22 @@ export const calendarService = {
             const data = docSnap.data();
             const now = Date.now();
 
+            // Support both old and new field names
+            const expiryDate = data.expiry_date || data.expires_at;
+
             // Should refresh 5 minutes before expiry to be safe
             const buffer = 5 * 60 * 1000;
 
-            if (data.access_token && data.expiry_date && (data.expiry_date - buffer > now)) {
+            if (data.access_token && expiryDate && (expiryDate - buffer > now)) {
                 return data.access_token;
             }
 
             // 2. Token is expired or missing, request refresh from Backend
-            console.log("CalendarService: Access token expired or near expiry. Refreshing...");
+            console.log("CalendarService: Access token expired or near expiry. Refreshing...", {
+                hasToken: !!data.access_token,
+                expiryDate,
+                now
+            });
 
             const refreshResponse = await fetch(API_ENDPOINT, {
                 method: 'POST',

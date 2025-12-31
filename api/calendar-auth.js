@@ -11,11 +11,18 @@ if (!getApps().length) {
 
         if (serviceAccount) {
             initializeApp({
-                credential: cert(serviceAccount)
+                credential: cert(serviceAccount),
+                projectId: 'ttasaciones-5ce4d'
+            });
+        } else if (process.env.FIREBASE_PROJECT_ID || process.env.VITE_FIREBASE_PROJECT_ID) {
+            initializeApp({
+                projectId: process.env.FIREBASE_PROJECT_ID || process.env.VITE_FIREBASE_PROJECT_ID
             });
         } else {
-            // Try default initialization (works if configured in Vercel/GCP environment)
-            initializeApp();
+            // Fallback to the known project ID
+            initializeApp({
+                projectId: 'ttasaciones-5ce4d'
+            });
         }
     } catch (error) {
         console.error("Firebase Admin initialization error:", error);
@@ -45,6 +52,8 @@ export default async function handler(req, res) {
     }
 
     const { code, refreshToken, uid } = req.body;
+
+    console.log("Auth request body:", { hasCode: !!code, hasRefreshToken: !!refreshToken, uid });
 
     if (!process.env.GOOGLE_CLIENT_ID || !process.env.GOOGLE_CLIENT_SECRET) {
         console.error("Missing server-side Google OAuth2 credentials");
@@ -106,11 +115,17 @@ export default async function handler(req, res) {
             const docSnap = await docRef.get();
 
             if (!docSnap.exists) {
+                console.warn(`No integration document found for UID: ${uid}`);
                 return res.status(404).json({ error: 'No calendar integration found' });
             }
 
             const data = docSnap.data();
             const storedRefreshToken = data.refresh_token;
+
+            console.log(`Stored token data for ${uid}:`, {
+                hasRefreshToken: !!storedRefreshToken,
+                expiry_date: data.expiry_date
+            });
 
             if (!storedRefreshToken) {
                 return res.status(400).json({ error: 'No refresh token available. Re-auth required.' });
