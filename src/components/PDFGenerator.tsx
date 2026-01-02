@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react';
 import { createPortal } from 'react-dom';
 import ReportView from './ReportView';
 import { Download } from 'lucide-react';
-import type { SavedValuation, Inmueble } from '../types';
+
 
 interface PDFGeneratorProps {
     tipo: 'tasacion' | 'fichaInmueble';

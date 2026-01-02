@@ -13,7 +13,7 @@ const LoginPage = React.lazy(() => import('./pages/LoginPage'));
 const ControlPanel = React.lazy(() => import('./pages/ControlPanel'));
 const InmueblesPage = React.lazy(() => import('./pages/InmueblesPage'));
 const PropertyEditorPage = React.lazy(() => import('./pages/PropertyEditorPage'));
-const PropertyDetailPage = React.lazy(() => import('./components/report/PropertyDetailPage'));
+const PropertyDetailPage = React.lazy(() => import('./pages/PropertyDetailPage'));
 const CalendarPage = React.lazy(() => import('./pages/CalendarPage'));
 const FilesPage = React.lazy(() => import('./pages/FilesPage'));
 
