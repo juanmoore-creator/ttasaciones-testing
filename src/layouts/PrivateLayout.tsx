@@ -16,10 +16,10 @@ const PrivateLayout = () => {
 
     const navLinks = [
         { to: '/app', text: 'Panel de Control', icon: LayoutDashboard },
-        { to: '/app/tasaciones', text: 'Tasaciones', icon: FolderOpen },
+        { to: '/app/inmuebles', text: 'Inmuebles', icon: Home },
         { to: '/app/clients', text: 'Clientes', icon: Users },
-        { to: '/app/archivos', text: 'Archivos', icon: FolderOpen },
         { to: '/app/calendar', text: 'Calendario', icon: CalendarDays },
+        { to: '/app/archivos', text: 'Archivos', icon: FolderOpen },
     ];
 
     const linkClass = "flex items-center gap-3 px-4 py-2 text-sm font-medium text-slate-600 hover:text-slate-900 hover:bg-slate-100 rounded-lg transition-colors";
@@ -46,7 +46,7 @@ const PrivateLayout = () => {
                     {/* Desktop Navigation */}
                     <nav className="hidden md:flex items-center gap-2">
                         {navLinks.map(link => (
-                             <NavLink
+                            <NavLink
                                 key={link.to}
                                 to={link.to}
                                 className={({ isActive }) => `${linkClass} ${isActive ? activeLinkClass : ''}`}
@@ -76,12 +76,12 @@ const PrivateLayout = () => {
                     </div>
                 </div>
 
-                 {/* Mobile Menu Dropdown */}
-                 {isMenuOpen && (
+                {/* Mobile Menu Dropdown */}
+                {isMenuOpen && (
                     <div className="md:hidden bg-white border-t border-slate-100 shadow-lg">
                         <nav className="flex flex-col gap-2 p-4">
                             {navLinks.map(link => (
-                                 <NavLink
+                                <NavLink
                                     key={link.to}
                                     to={link.to}
                                     onClick={() => setIsMenuOpen(false)}

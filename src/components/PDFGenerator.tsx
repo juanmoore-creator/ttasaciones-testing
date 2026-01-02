@@ -2,12 +2,12 @@ import { useState, useEffect } from 'react';
 import { createPortal } from 'react-dom';
 import ReportView from './ReportView';
 import { Download } from 'lucide-react';
+import type { SavedValuation, Inmueble } from '../types';
 
 interface PDFGeneratorProps {
-    target: any;
-    comparables: any[];
-    valuation: any;
-    stats: any;
+    tipo: 'tasacion' | 'fichaInmueble';
+    data: any; // SavedValuation or Inmueble
+    // Legacy/Shared props
     brokerName?: string;
     matricula?: string;
     clientName?: string;
@@ -17,9 +17,15 @@ interface PDFGeneratorProps {
     };
     displayMode?: 'text' | 'icon';
     className?: string;
+    // Optional overrides
+    stats?: any;
+    // If wrapping legacy usage where data is spread
+    target?: any;
+    comparables?: any[];
+    valuation?: any;
 }
 
-const PDFGenerator = ({ target, comparables, valuation, stats, brokerName, matricula, clientName, theme, displayMode = 'text', className }: PDFGeneratorProps) => {
+const PDFGenerator = ({ tipo, data, target, comparables, valuation, stats, brokerName, matricula, clientName, theme, displayMode = 'text', className }: PDFGeneratorProps) => {
     const [isGenerating, setIsGenerating] = useState(false);
     const [showPreview, setShowPreview] = useState(false);
     const [mountNode, setMountNode] = useState<HTMLElement | null>(null);
@@ -32,21 +38,47 @@ const PDFGenerator = ({ target, comparables, valuation, stats, brokerName, matri
         setMountNode(document.body);
     }, []);
 
-    useEffect(() => {
-        if (showPreview) {
-            setEditableReportData({
-                target: JSON.parse(JSON.stringify(target)),
+    // Resolve actual data based on type
+    const resolveData = () => {
+        if (tipo === 'tasacion') {
+            // Support both old prop spread and new 'data' prop
+            const valData = data || valuation || {};
+            // If props are passed individually (target, comparables, etc.) use them
+            // Otherwise use data object
+            return {
+                target: target || valData.target,
+                comparables: comparables || valData.comparables || [],
+                valuation: valData,
+                clientName: clientName || valData.clientName || 'Cliente Final',
                 brokerName: brokerName || '',
-                matricula: matricula || '',
-                clientName: clientName || 'Cliente Final',
-                ...JSON.parse(JSON.stringify(valuation))
+                matricula: matricula || ''
+            };
+        } else if (tipo === 'fichaInmueble') {
+            // For Inmueble property sheet
+            // MOCK adaptation to ReportView for now, or just render something else
+            // If ReportView is strictly for Valuations, we might need a PropertySheetView. Using a placeholder for now as requested.
+            return null;
+        }
+        return null;
+    };
+
+    const resolvedData = resolveData();
+
+    useEffect(() => {
+        if (showPreview && tipo === 'tasacion' && resolvedData) {
+            setEditableReportData({
+                target: JSON.parse(JSON.stringify(resolvedData.target)),
+                brokerName: resolvedData.brokerName,
+                matricula: resolvedData.matricula,
+                clientName: resolvedData.clientName,
+                ...JSON.parse(JSON.stringify(resolvedData.valuation))
             });
-            setEditableComparables(JSON.parse(JSON.stringify(comparables)));
+            setEditableComparables(JSON.parse(JSON.stringify(resolvedData.comparables)));
         } else {
             setEditableReportData(null);
             setEditableComparables([]);
         }
-    }, [showPreview, target, comparables, valuation, brokerName, matricula, clientName]);
+    }, [showPreview, tipo, data, target, comparables, valuation]); // Depend on flattened props too
 
     const handleUpdateData = (path: string, value: any) => {
         setEditableReportData((prev: any) => {
@@ -79,13 +111,11 @@ const PDFGenerator = ({ target, comparables, valuation, stats, brokerName, matri
         setIsGenerating(true);
 
         try {
-            // Lazy load libraries only when needed
             const [html2canvas, jsPDF] = await Promise.all([
                 import('html2canvas').then(m => m.default),
                 import('jspdf').then(m => m.default)
             ]);
 
-            // Wait a tick for React to render the portal content if it wasn't there
             await new Promise(resolve => setTimeout(resolve, 100));
 
             const container = document.getElementById('pdf-render-target');
@@ -122,7 +152,11 @@ const PDFGenerator = ({ target, comparables, valuation, stats, brokerName, matri
                 pdf.addImage(imgData, 'JPEG', 0, 0, pdfWidth, pdfHeight);
             }
 
-            pdf.save(`tasacion-${target.address || 'propiedad'}.pdf`);
+            const fileName = tipo === 'tasacion'
+                ? `tasacion-${resolvedData?.target?.address || 'propiedad'}.pdf`
+                : `ficha-${data?.direccion || 'inmueble'}.pdf`;
+
+            pdf.save(fileName);
         } catch (err) {
             console.error("Error generating PDF", err);
             alert("Hubo un error al generar el PDF.");
@@ -131,23 +165,22 @@ const PDFGenerator = ({ target, comparables, valuation, stats, brokerName, matri
         }
     };
 
-    // Use editable data if available (preview mode), otherwise use props
-    const activeReportData = editableReportData || {
-        target: target,
-        brokerName: brokerName || '',
-        matricula: matricula || '',
-        clientName: clientName || 'Cliente Final',
-        ...valuation
-    };
+    const activeReportData = editableReportData || (resolvedData ? {
+        target: resolvedData.target,
+        brokerName: resolvedData.brokerName,
+        matricula: resolvedData.matricula,
+        clientName: resolvedData.clientName,
+        ...resolvedData.valuation
+    } : null);
 
-    const activeComparables = editableComparables.length > 0 ? editableComparables : comparables;
+    const activeComparables = editableComparables.length > 0 ? editableComparables : (resolvedData?.comparables || []);
 
     return (
         <>
             <button
                 onClick={() => setShowPreview(true)}
                 className={className || `flex items-center gap-2 px-3 py-2 text-sm font-medium text-white bg-indigo-600 hover:bg-indigo-500 hover:shadow-indigo-200 hover:shadow-md rounded-lg shadow-sm transition-all disabled:opacity-50 disabled:shadow-none active:scale-95`}
-                disabled={isGenerating || comparables.length === 0}
+                disabled={isGenerating || (tipo === 'tasacion' && activeComparables.length === 0)}
                 title="Generar PDF"
             >
                 {isGenerating ? (
@@ -187,23 +220,35 @@ const PDFGenerator = ({ target, comparables, valuation, stats, brokerName, matri
 
                     <div className="flex-1 overflow-y-auto bg-slate-100 p-8">
                         <div className="max-w-6xl mx-auto">
-                            <ReportView
-                                data={activeReportData}
-                                properties={activeComparables}
-                                valuation={activeReportData}
-                                stats={stats}
-                                theme={theme}
-                                showAnnotations={true}
-                                onUpdateData={handleUpdateData}
-                                onUpdateComparable={handleUpdateComparable}
-                            />
+                            {/* RENDER LOGIC BASED ON TIPO */}
+                            {tipo === 'tasacion' ? (
+                                <ReportView
+                                    data={activeReportData}
+                                    properties={activeComparables}
+                                    valuation={activeReportData}
+                                    stats={stats}
+                                    theme={theme}
+                                    showAnnotations={true}
+                                    onUpdateData={handleUpdateData}
+                                    onUpdateComparable={handleUpdateComparable}
+                                />
+                            ) : (
+                                // For 'fichaInmueble' we show a placeholder for now
+                                <div id="pdf-render-target" className="bg-white p-12 min-h-[800px] shadow print-page">
+                                    <h1 className="text-3xl font-bold mb-4">Ficha para {data?.direccion || 'Inmueble'}</h1>
+                                    <p>Aquí se mostrará la ficha técnica del inmueble.</p>
+                                    <p>Esta funcionalidad está en desarrollo.</p>
+                                    {/* Additional placeholder details from the Inmueble data could go here */}
+                                    <pre className="mt-8 bg-slate-50 p-4 rounded text-xs">{JSON.stringify(data, null, 2)}</pre>
+                                </div>
+                            )}
                         </div>
                     </div>
                 </div>,
                 document.body
             )}
 
-            {/* Hidden Render Target for PDF Generation (Clean version without annotations) */}
+            {/* Hidden Render Target for PDF Generation (Clean version without annotations) - ONLY FOR TASACION IF REPORT VIEW */}
             {mountNode && createPortal(
                 <div id="pdf-render-target" style={{
                     position: 'fixed',
@@ -215,14 +260,32 @@ const PDFGenerator = ({ target, comparables, valuation, stats, brokerName, matri
                     pointerEvents: 'none'
                 }}>
                     <div style={{ visibility: 'visible' }}>
-                        <ReportView
-                            data={activeReportData}
-                            properties={activeComparables}
-                            valuation={activeReportData}
-                            stats={stats}
-                            theme={theme}
-                            showAnnotations={false}
-                        />
+                        {tipo === 'tasacion' ? (
+                            <ReportView
+                                data={activeReportData}
+                                properties={activeComparables}
+                                valuation={activeReportData}
+                                stats={stats}
+                                theme={theme}
+                                showAnnotations={false}
+                            />
+                        ) : (
+                            // The off-screen version of Ficha
+                            <div className="bg-white p-12 min-h-[1123px] print-page">
+                                <h1 className="text-3xl font-bold mb-4">Ficha para {data?.direccion || 'Inmueble'}</h1>
+                                <p>Ficha técnica generada automáticamente.</p>
+                                <div className="grid grid-cols-2 gap-4 mt-8">
+                                    <div className="border p-4 rounded">
+                                        <p className="font-bold">Superficie</p>
+                                        <p>{data?.caracteristicas?.metrosCuadrados} m²</p>
+                                    </div>
+                                    <div className="border p-4 rounded">
+                                        <p className="font-bold">Habitaciones</p>
+                                        <p>{data?.caracteristicas?.habitaciones}</p>
+                                    </div>
+                                </div>
+                            </div>
+                        )}
                     </div>
                 </div>,
                 mountNode

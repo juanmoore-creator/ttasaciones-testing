@@ -9,22 +9,21 @@ import { NotesModal } from '../components/NotesModal';
 import { Card } from '../components/ui/Card';
 import { StatCard } from '../components/ui/StatCard';
 import { useClients } from '../context/ClientsContext';
-import { useSavedValuations } from '../hooks/useSavedValuations';
-import { useActiveValuation } from '../hooks/useActiveValuation';
-import type { Client, SavedValuation } from '../types';
+import { useInmuebles } from '../hooks/useInmuebles';
+import type { Client, Inmueble } from '../types';
 import { useNavigate, useLocation } from 'react-router-dom';
 
 export default function ClientsManager() {
     const { clients, addClient, updateClient, deleteClient } = useClients();
-    const { savedValuations, handleLoadValuation } = useSavedValuations();
-    const { loadActiveValuation, isDirty } = useActiveValuation();
+    const { inmuebles, getInmueblesByPropietario } = useInmuebles();
     const navigate = useNavigate();
     const location = useLocation();
 
-    const [selectedClient, setSelectedClient] = useState<Client & { valuations: any[] } | null>(null);
+    // Mapping 'properties' (inmuebles) to the client instead of valuations
+    const [selectedClient, setSelectedClient] = useState<Client & { properties: Inmueble[] } | null>(null);
     const [searchQuery, setSearchQuery] = useState('');
     const [statusFilter, setStatusFilter] = useState('all');
-    const [typeFilter, setTypeFilter] = useState<'all' | 'Comprador' | 'Propietario' | 'Inquilino'>('all');
+    const [roleFilter, setRoleFilter] = useState<'all' | 'Comprador' | 'Propietario' | 'Inquilino'>('all');
 
     // Modal State
     const [isModalOpen, setIsModalOpen] = useState(false);
@@ -35,30 +34,26 @@ export default function ClientsManager() {
     const [notesClient, setNotesClient] = useState<Client | null>(null);
 
     // --- Calculations ---
-    const clientsWithHistory = useMemo(() => {
+    const clientsWithProperties = useMemo(() => {
         return clients.map(client => ({
             ...client,
-            valuations: savedValuations.filter(v => v.clientName && v.clientName.trim().toLowerCase() === client.name.trim().toLowerCase())
+            properties: getInmueblesByPropietario(client.id)
         }));
-    }, [clients, savedValuations]);
+    }, [clients, inmuebles]);
 
     const filteredClients = useMemo(() => {
-        return clientsWithHistory.filter(client => {
+        return clientsWithProperties.filter(client => {
             const lowerQuery = searchQuery.toLowerCase();
             const matchesSearch = client.name.toLowerCase().includes(lowerQuery) || (client.email && client.email.toLowerCase().includes(lowerQuery));
             const matchesStatus = statusFilter === 'all' || client.status === statusFilter;
-            const matchesType = typeFilter === 'all' || client.type === typeFilter;
-            return matchesSearch && matchesStatus && matchesType;
-        });
-    }, [clientsWithHistory, searchQuery, statusFilter, typeFilter]);
 
-    const handleLoad = (val: SavedValuation) => {
-        const payload = { valuation: val, isDirty };
-        handleLoadValuation(payload, (loadedValuation) => {
-            loadActiveValuation(loadedValuation);
-            navigate('/app/tasaciones/editar');
+            // Check roles (array) or legacy type (string)
+            const clientRoles = client.roles || (client.type ? [client.type] : []);
+            const matchesRole = roleFilter === 'all' || clientRoles.includes(roleFilter as any);
+
+            return matchesSearch && matchesStatus && matchesRole;
         });
-    };
+    }, [clientsWithProperties, searchQuery, statusFilter, roleFilter]);
 
     const getStatusBadge = (status: string) => {
         const statuses: Record<string, React.ReactNode> = {
@@ -69,18 +64,26 @@ export default function ClientsManager() {
         return statuses[status] || <span className="px-2 py-1 rounded-full text-xs font-semibold bg-slate-100 text-slate-600">{status}</span>;
     };
 
-    const getTypeTag = (type: string) => {
-        const types: Record<string, { bg: string, text: string, icon: React.ReactNode }> = {
-            'Comprador': { bg: 'bg-indigo-50 text-indigo-700 border-indigo-100', text: 'Comprador', icon: <Users className="w-3 h-3" /> },
-            'Propietario': { bg: 'bg-rose-50 text-rose-700 border-rose-100', text: 'Propietario', icon: <Home className="w-3 h-3" /> },
-            'Inquilino': { bg: 'bg-cyan-50 text-cyan-700 border-cyan-100', text: 'Inquilino', icon: <UserCheck className="w-3 h-3" /> },
-        };
-        const config = types[type] || { bg: 'bg-slate-50 text-slate-700 border-slate-100', text: type, icon: null };
+    const getRoleTags = (client: Client) => {
+        const roles = client.roles || (client.type ? [client.type] : []);
+        if (roles.length === 0) return null;
+
         return (
-            <span className={`inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-md text-xs font-medium border ${config.bg}`}>
-                {config.icon}
-                {config.text}
-            </span>
+            <div className="flex flex-wrap gap-1 mt-1">
+                {roles.map(role => {
+                    let config = { bg: 'bg-slate-50 text-slate-700 border-slate-100', icon: null as React.ReactNode };
+                    if (role === 'Comprador') config = { bg: 'bg-indigo-50 text-indigo-700 border-indigo-100', icon: <Users className="w-3 h-3" /> };
+                    if (role === 'Propietario') config = { bg: 'bg-rose-50 text-rose-700 border-rose-100', icon: <Home className="w-3 h-3" /> };
+                    if (role === 'Inquilino') config = { bg: 'bg-cyan-50 text-cyan-700 border-cyan-100', icon: <UserCheck className="w-3 h-3" /> };
+
+                    return (
+                        <span key={role} className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[10px] font-medium border ${config.bg}`}>
+                            {config.icon}
+                            {role}
+                        </span>
+                    );
+                })}
+            </div>
         );
     };
 
@@ -88,20 +91,30 @@ export default function ClientsManager() {
         e.preventDefault();
         if (!editingClient?.name) return;
         try {
+            // Ensure roles array is populated from legacy type if needed, or from form
+            // For this version we will map the single select 'type' to 'roles' for backward compatibility
+            // but ideally we should allow multi-select in the UI.
+            // For now, let's just save 'type' and 'roles' as an array containing that type.
+            const selectedType = editingClient.type || 'Comprador';
+            const roles = [selectedType]; // Simple mapping for now
+
+            const clientData: any = {
+                name: editingClient.name || '',
+                email: editingClient.email || '',
+                phone: editingClient.phone || '',
+                status: (editingClient.status as any) || 'Nuevo',
+                type: selectedType, // Keep legacy field for now
+                roles: roles,
+                budget: editingClient.budget || '',
+                interestZone: editingClient.interestZone || '',
+                propertyType: editingClient.propertyType || '',
+                notes: editingClient.notes || ''
+            };
+
             if (editingClient.id) {
-                await updateClient(editingClient.id, editingClient);
+                await updateClient(editingClient.id, clientData);
             } else {
-                await addClient({
-                    name: editingClient.name || '',
-                    email: editingClient.email || '',
-                    phone: editingClient.phone || '',
-                    status: (editingClient.status as any) || 'Nuevo',
-                    type: (editingClient.type as any) || 'Comprador',
-                    budget: editingClient.budget || '',
-                    interestZone: editingClient.interestZone || '',
-                    propertyType: editingClient.propertyType || '',
-                    notes: editingClient.notes || ''
-                });
+                await addClient(clientData);
             }
             setIsModalOpen(false); setEditingClient(null);
         } catch (error) { console.error("Error saving client", error); }
@@ -113,7 +126,6 @@ export default function ClientsManager() {
     useEffect(() => {
         if (location.state?.openNewClient) {
             openNewClientModal();
-            // Clear state to avoid reopening on refresh
             navigate(location.pathname, { replace: true, state: {} });
         }
     }, [location.state, navigate]);
@@ -134,8 +146,8 @@ export default function ClientsManager() {
             {/* Metrics */}
             <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
                 <StatCard label="Total Clientes" value={clients.length.toString()} color="indigo" icon={<Users />} />
-                <StatCard label="Tasaciones Guardadas" value={savedValuations.length.toString()} color="emerald" icon={<Activity />} />
-                <StatCard label="Tasa de Conversión" value="0%" subtext="Próximamente" color="amber" icon={<TrendingUp />} />
+                <StatCard label="Propiedades Asignadas" value={inmuebles.filter(i => i.propietarioId).length.toString()} color="emerald" icon={<Home />} />
+                <StatCard label="Tasa de Conversión" value="-" subtext="Próximamente" color="amber" icon={<TrendingUp />} />
             </div>
 
             {/* Toolbar */}
@@ -148,18 +160,18 @@ export default function ClientsManager() {
 
                     <div className="flex p-1 bg-slate-200/50 rounded-xl w-full sm:w-auto">
                         <button
-                            onClick={() => setTypeFilter('all')}
-                            className={`flex-1 sm:flex-none px-4 py-1.5 rounded-lg text-xs font-semibold transition-all ${typeFilter === 'all' ? 'bg-white text-slate-900 shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}
+                            onClick={() => setRoleFilter('all')}
+                            className={`flex-1 sm:flex-none px-4 py-1.5 rounded-lg text-xs font-semibold transition-all ${roleFilter === 'all' ? 'bg-white text-slate-900 shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}
                         >
                             Todos
                         </button>
-                        {(['Comprador', 'Propietario', 'Inquilino'] as const).map((type) => (
+                        {(['Comprador', 'Propietario', 'Inquilino'] as const).map((role) => (
                             <button
-                                key={type}
-                                onClick={() => setTypeFilter(typeFilter === type ? 'all' : type)}
-                                className={`flex-1 sm:flex-none px-4 py-1.5 rounded-lg text-xs font-semibold transition-all ${typeFilter === type ? 'bg-white text-slate-900 shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}
+                                key={role}
+                                onClick={() => setRoleFilter(roleFilter === role ? 'all' : role)}
+                                className={`flex-1 sm:flex-none px-4 py-1.5 rounded-lg text-xs font-semibold transition-all ${roleFilter === role ? 'bg-white text-slate-900 shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}
                             >
-                                {type}s
+                                {role}s
                             </button>
                         ))}
                     </div>
@@ -192,7 +204,7 @@ export default function ClientsManager() {
                                         <Pencil className="w-3.5 h-3.5" />
                                     </button>
                                 </div>
-                                {getTypeTag(client.type)}
+                                {getRoleTags(client)}
                             </div>
                             {getStatusBadge(client.status)}
                         </div>
@@ -211,7 +223,7 @@ export default function ClientsManager() {
                             </div>
                             <div className="bg-slate-50 p-2 rounded-xl text-center border border-slate-100">
                                 <Home className="w-3.5 h-3.5 mx-auto mb-1 text-slate-400" />
-                                <p className="text-[10px] text-slate-400 font-medium uppercase tracking-wider mb-0.5 whitespace-nowrap overflow-hidden text-ellipsis">Tipo</p>
+                                <p className="text-[10px] text-slate-400 font-medium uppercase tracking-wider mb-0.5 whitespace-nowrap overflow-hidden text-ellipsis">Inmueble</p>
                                 <p className="text-xs font-bold text-slate-700 truncate">{client.propertyType || '-'}</p>
                             </div>
                         </div>
@@ -242,7 +254,7 @@ export default function ClientsManager() {
                                     </a>
                                 )}
                                 <button
-                                    onClick={(e) => { e.stopPropagation(); navigate('/app/calendario'); }}
+                                    onClick={(e) => { e.stopPropagation(); navigate('/app/calendar'); }}
                                     className="p-2 bg-white text-slate-600 hover:text-slate-700 border border-slate-200 rounded-lg transition-colors shadow-sm"
                                     title="Agendar"
                                 >
@@ -251,7 +263,7 @@ export default function ClientsManager() {
                             </div>
 
                             <button
-                                onClick={() => setSelectedClient(client)}
+                                onClick={() => setSelectedClient({ ...client, properties: getInmueblesByPropietario(client.id) })}
                                 className="px-4 py-2 bg-brand hover:bg-brand-dark text-white rounded-lg font-bold text-xs shadow-sm transition-all"
                             >
                                 Ver Perfil Completo
@@ -292,7 +304,7 @@ export default function ClientsManager() {
                                         <Trash2 className="w-4 h-4" />
                                     </button>
                                 </div>
-                                <div className="flex items-center gap-2">{getStatusBadge(selectedClient.status)} {getTypeTag(selectedClient.type)}</div>
+                                <div className="flex items-center gap-2">{getStatusBadge(selectedClient.status)} {getRoleTags(selectedClient)}</div>
                             </div>
                             <button onClick={() => setSelectedClient(null)} className="p-2 rounded-full hover:bg-slate-100"><X /></button>
                         </div>
@@ -320,6 +332,7 @@ export default function ClientsManager() {
                             {/* Contact Info */}
                             <div className="space-y-4">
                                 <h3 className="text-xs font-bold text-slate-400 uppercase tracking-widest px-1">Datos de Contacto</h3>
+                                {/* ... Same contact info ... */}
                                 <div className="bg-white border border-slate-100 shadow-sm rounded-2xl overflow-hidden divide-y divide-slate-100">
                                     <div className="p-4 flex justify-between items-center group">
                                         <div className="flex items-center gap-3">
@@ -364,11 +377,11 @@ export default function ClientsManager() {
                                 </div>
                             </div>
 
-                            {/* Valuations */}
+                            {/* Properties (formerly Valuations) */}
                             <div className="space-y-4">
                                 <div className="flex items-center justify-between">
                                     <h3 className="text-xs font-bold text-slate-400 uppercase flex items-center gap-1.5">
-                                        <History className="w-3.5 h-3.5" /> Tasaciones Guardadas
+                                        <History className="w-3.5 h-3.5" /> Propiedades Asignadas
                                     </h3>
                                     <button
                                         onClick={() => {
@@ -380,23 +393,24 @@ export default function ClientsManager() {
                                         <FileText className="w-3 h-3" /> Notas
                                     </button>
                                 </div>
-                                {selectedClient.valuations.length > 0 ? (
+                                {selectedClient.properties.length > 0 ? (
                                     <div className="space-y-2">
-                                        {selectedClient.valuations.map((val: any) => (
-                                            <div key={val.id} onClick={() => handleLoad(val)} className="group p-3 bg-white border rounded-xl cursor-pointer hover:border-brand/30 transition-colors shadow-sm">
+                                        {selectedClient.properties.map((prop) => (
+                                            <div key={prop.id} onClick={() => navigate(`/app/inmuebles/${prop.id}`)} className="group p-3 bg-white border rounded-xl cursor-pointer hover:border-brand/30 transition-colors shadow-sm">
                                                 <div className="flex justify-between items-start">
                                                     <span className="text-xs font-semibold text-brand bg-brand/5 px-2 py-0.5 rounded-full">
-                                                        {new Date(val.date).toLocaleDateString()}
+                                                        {prop.operacion}
                                                     </span>
                                                     <ArrowRight className="w-3 h-3 text-slate-300 group-hover:text-brand transition-colors" />
                                                 </div>
-                                                <div className="font-medium text-sm mt-1">{val.target.address}</div>
+                                                <div className="font-medium text-sm mt-1">{prop.direccion}</div>
+                                                <div className="text-xs text-slate-500 mt-0.5">{prop.status}</div>
                                             </div>
                                         ))}
                                     </div>
                                 ) : (
                                     <div className="p-4 bg-slate-50 rounded-xl text-center text-xs text-slate-400">
-                                        No hay tasaciones registradas.
+                                        No hay propiedades asignadas.
                                     </div>
                                 )}
                             </div>
@@ -413,6 +427,7 @@ export default function ClientsManager() {
                 )}
             </div>
 
+            {/* Modal for Edit/New */}
             {selectedClient && (
                 <div
                     className="fixed inset-0 bg-black/20 z-40 backdrop-blur-sm"
@@ -420,12 +435,12 @@ export default function ClientsManager() {
                 />
             )}
 
-            {/* Edit/New Client Modal */}
             {isModalOpen && (
                 <div className="fixed inset-0 bg-black/40 z-[60] flex items-center justify-center p-4 backdrop-blur-sm">
                     <div className="bg-white rounded-2xl shadow-xl w-full max-w-md p-6 animate-in fade-in zoom-in-95 duration-200">
                         <h3 className="text-xl font-bold mb-4">{editingClient?.id ? 'Editar Cliente' : 'Nuevo Cliente'}</h3>
                         <form onSubmit={handleSaveClient} className="space-y-4">
+                            {/* Inputs ... same as before */}
                             <input
                                 required
                                 type="text"
@@ -474,7 +489,7 @@ export default function ClientsManager() {
                                     </select>
                                 </div>
                             </div>
-
+                            {/* Rest of inputs */}
                             <div className="grid grid-cols-2 gap-4">
                                 <div className="space-y-1">
                                     <label className="text-[10px] font-bold text-slate-400 uppercase ml-1">Presupuesto</label>
@@ -518,6 +533,7 @@ export default function ClientsManager() {
                                     placeholder="Detalles adicionales..."
                                 />
                             </div>
+
                             <div className="flex justify-end gap-2 pt-4">
                                 <button
                                     type="button"

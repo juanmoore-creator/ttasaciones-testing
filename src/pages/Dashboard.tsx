@@ -1,4 +1,5 @@
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useEffect } from 'react';
+import { useLocation } from 'react-router-dom';
 import {
   Upload, Home, Trash2, AlertCircle, FileSpreadsheet, X,
   ChevronDown, ChevronUp, CheckSquare, BarChart, Sparkles, MapPin, Plus, Save
@@ -6,9 +7,12 @@ import {
 import { motion, AnimatePresence } from 'framer-motion';
 import { Card } from '../components/ui/Card';
 import { StatCard } from '../components/ui/StatCard';
+import { useAuth } from '../context/AuthContext';
+import { db } from '../lib/firebase';
+import { collection, addDoc, doc, setDoc } from 'firebase/firestore';
 
 import { useActiveValuation } from '../hooks/useActiveValuation';
-import { useSavedValuations } from '../hooks/useSavedValuations';
+// import { useSavedValuations } from '../hooks/useSavedValuations'; // Removed
 import { useUserProfile } from '../hooks/useUserProfile';
 import { useUI } from '../hooks/useUI';
 import { useGoogleSheetImport } from '../hooks/useGoogleSheetImport';
@@ -23,6 +27,7 @@ import PDFGenerator from '../components/PDFGenerator';
 import { useJsApiLoader, type Libraries } from '@react-google-maps/api';
 import { GeminiConsultationModal } from '../components/GeminiConsultationModal';
 import type { SurfaceType } from '../types/index';
+
 
 const libraries: Libraries = ["places"];
 
@@ -42,7 +47,39 @@ function Dashboard() {
     setIsDirty
   } = useActiveValuation();
 
-  const { handleSaveValuation } = useSavedValuations();
+  const { user } = useAuth();
+  // const { handleSaveValuation } = useSavedValuations();
+
+  const handleSaveValuation = async (data: any, onSuccess: (id: string) => void) => {
+    if (!user) return;
+    try {
+      const valData = {
+        target: data.target,
+        comparables: data.comparables,
+        clientName: data.clientName,
+        valuation: data.valuation, // Save calculated stats
+        date: Date.now(),
+        name: `Tasación - ${data.target.address || 'Sin Dirección'}`,
+        inmuebleId: location.state?.propertyData?.id || null // Link if available
+      };
+
+      let id = data.currentValuationId;
+
+      if (id) {
+        await setDoc(doc(db, `users/${user.uid}/saved_valuations`, id), valData, { merge: true });
+      } else {
+        const docRef = await addDoc(collection(db, `users/${user.uid}/saved_valuations`), valData);
+        id = docRef.id;
+      }
+
+      if (onSuccess) onSuccess(id);
+      alert("Tasación guardada correctamente.");
+    } catch (e) {
+      console.error("Error saving valuation", e);
+      alert("Error al guardar la tasación.");
+    }
+  };
+
   const { brokerName, setBrokerName, matricula, setMatricula, pdfTheme } = useUserProfile();
   const { geminiModalOpen, setGeminiModalOpen } = useUI();
   const { sheetUrl, setSheetUrl, handleImportFromSheet } = useGoogleSheetImport();
@@ -54,6 +91,57 @@ function Dashboard() {
   const [isSavingAgent, setIsSavingAgent] = useState(false);
   const [mapSnapshot, setMapSnapshot] = useState<{ target: any, comparables: any[] } | null>(null);
   const [expandedMobileCards, setExpandedMobileCards] = useState<string[]>([]);
+
+  const location = useLocation();
+
+  useEffect(() => {
+    if (location.state?.propertyData) {
+      const prop = location.state.propertyData;
+
+      // Confirmation before overwriting if dirty?
+      // For now, let's assume explicit intent means overwrite or the user accepts it.
+      // Ideally we reset the valuation first.
+
+      const newTarget = {
+        address: prop.direccion || '',
+        coveredSurface: prop.caracteristicas?.metrosCuadrados || 0,
+        uncoveredSurface: 0,
+        surfaceType: 'Balcón' as SurfaceType,
+        homogenizationFactor: 0.10,
+        rooms: prop.caracteristicas?.habitaciones || 0,
+        bedrooms: 0, // Not in simple schema yet, default 0
+        bathrooms: prop.caracteristicas?.banos || 0,
+        age: 0,
+        garage: (prop.caracteristicas?.cocheras || 0) > 0,
+        semiCoveredSurface: 0,
+        toilettes: 0,
+        floorType: '',
+        isCreditEligible: false,
+        isProfessional: false,
+        hasFinancing: false,
+        images: prop.fotos || [],
+        mapImage: ''
+      };
+
+      // We set the target directly. 
+      // Note: setting state here might trigger 'isDirty' if not handled carefully, 
+      // but since we are effectively "loading" a new one, maybe that's okay.
+      // We also want to clear comparables if clean start is desired.
+      // Let's rely on updateTarget not triggering if values are same, but they won't be.
+
+      // Force update directly? 
+      // Since useActiveValuation exposes updateTarget, we use it. 
+      // But for a full reset we might want to manually set comparables to [] too using the hook's setter if exposed, 
+      // OR better: use handleNewValuation() then updateTarget() but handleNewValuation is async/modal.
+
+      // Let's just update target info. The user can manually clear comparables or click "New" if they want full reset.
+      // But usually "New Valuation" implies empty comparables. 
+
+      updateTarget(newTarget);
+      // Clear history state to avoid re-triggering on refresh
+      window.history.replaceState({}, document.title);
+    }
+  }, [location.state]);
 
   const handleSelectClient = (clientId: string) => {
     const client = clients.find(c => c.id === clientId);
@@ -182,7 +270,22 @@ function Dashboard() {
           </Card>
 
           <div className="grid grid-cols-1 lg:grid-cols-12 gap-8">
-            <div className="lg:col-span-8"><Card className="h-full"><div className="p-6"><div className="flex items-center gap-2 mb-6"><BarChart className="w-5 h-5 text-brand" /><h2 className="font-bold font-heading uppercase tracking-wider text-sm">Resultados de Valuación</h2></div><div className="grid grid-cols-1 md:grid-cols-3 gap-6"><StatCard label="Venta Rápida" value={formatCurrency(valuation.low)} subtext={`$${formatNumber(stats.terciles[0])}/m²`} color="green" /><StatCard label="Precio de Mercado" value={formatCurrency(valuation.market)} subtext={`$${formatNumber(stats.avg)}/m²`} color="blue" /><StatCard label="Precio Alto" value={formatCurrency(valuation.high)} subtext={`$${formatNumber(stats.terciles[2])}/m²`} color="amber" /></div></div></Card></div>
+            <div className="lg:col-span-8 space-y-8">
+              <Card className="h-full">
+                <div className="p-6">
+                  <div className="flex items-center gap-2 mb-6">
+                    <BarChart className="w-5 h-5 text-brand" />
+                    <h2 className="font-bold font-heading uppercase tracking-wider text-sm">Resultados de Valuación</h2>
+                  </div>
+                  <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+                    <StatCard label="Venta Rápida" value={formatCurrency(valuation.low)} subtext={`$${formatNumber(stats.terciles[0])}/m²`} color="green" />
+                    <StatCard label="Precio de Mercado" value={formatCurrency(valuation.market)} subtext={`$${formatNumber(stats.avg)}/m²`} color="blue" />
+                    <StatCard label="Precio Alto" value={formatCurrency(valuation.high)} subtext={`$${formatNumber(stats.terciles[2])}/m²`} color="amber" />
+                  </div>
+                </div>
+              </Card>
+            </div>
+
             <div className="lg:col-span-4"><Card className="h-full"><div className="p-4 space-y-4"><h2 className="font-semibold text-xs uppercase tracking-wider flex items-center gap-2"><AlertCircle className="w-4 h-4 text-brand" />Datos del Reporte</h2><div className="space-y-4"><div className="bg-slate-50 p-3 rounded-lg border"><label className="text-xs text-slate-500 uppercase font-bold mb-1.5 block">Cargar Agente</label><select onChange={(e) => handleSelectAgent(e.target.value)} className="w-full text-sm" value=""><option value="" disabled>Seleccionar...</option>{loadingAgents ? <option disabled>Cargando...</option> : agents.map(a => <option key={a.id} value={a.id}>{a.name}</option>)}</select></div><div className="space-y-3"><div className="bg-slate-50 p-3 rounded-lg border"><label className="text-xs text-slate-500 uppercase font-bold mb-1.5 block">Cargar Cliente</label><select onChange={(e) => handleSelectClient(e.target.value)} className="w-full text-sm" value=""><option value="" disabled>Seleccionar...</option>{clients.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}</select></div><div><label className="text-xs text-slate-500 uppercase font-medium">Cliente</label><input type="text" value={clientName} onChange={e => setClientName(e.target.value)} className="w-full mt-1 text-sm" placeholder="Nombre del Cliente" /></div><div><label className="text-xs text-slate-500 uppercase font-medium">Agente</label><input type="text" value={brokerName} onChange={e => setBrokerName(e.target.value)} className="w-full mt-1 text-sm" placeholder="Ej: Juan Pérez" /></div><div><label className="text-xs text-slate-500 uppercase font-medium">Matrícula</label><input type="text" value={matricula} onChange={e => setMatricula(e.target.value)} className="w-full mt-1 text-sm" placeholder="Ej: CUCICBA 1234" /></div><button onClick={handleSaveAgent} disabled={isSavingAgent || !brokerName || !matricula} className="w-full flex items-center justify-center gap-2 py-2 bg-slate-800 text-white text-xs font-bold rounded-lg disabled:opacity-50 mt-2">{isSavingAgent ? 'Guardando...' : <><Save className="w-3 h-3" /> GUARDAR AGENTE</>}</button></div></div></div></Card></div>
           </div>
         </div>
@@ -191,7 +294,20 @@ function Dashboard() {
 
         <div className="fixed bottom-8 right-8 flex flex-col gap-3 z-50">
           <button onClick={() => handleSaveValuation({ target, comparables, clientName, currentValuationId }, onSaveSuccess)} className="flex items-center justify-center w-12 h-12 bg-white rounded-full shadow-lg border" title="Guardar Valuación"><Save className="w-5 h-5" /></button>
-          <PDFGenerator target={target} comparables={processedComparables} valuation={valuation} stats={stats} brokerName={brokerName} matricula={matricula} clientName={clientName} theme={pdfTheme} displayMode="icon" className="flex items-center justify-center w-12 h-12 bg-brand text-white rounded-full shadow-lg" />
+          <PDFGenerator
+            tipo="tasacion"
+            data={{ target, comparables, valuation, clientName }} // Pass bundled data
+            target={target}
+            comparables={processedComparables}
+            valuation={valuation}
+            stats={stats}
+            brokerName={brokerName}
+            matricula={matricula}
+            clientName={clientName}
+            theme={pdfTheme}
+            displayMode="icon"
+            className="flex items-center justify-center w-12 h-12 bg-brand text-white rounded-full shadow-lg"
+          />
         </div>
       </main>
     </div>

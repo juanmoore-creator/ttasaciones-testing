@@ -11,7 +11,9 @@ const ClientsManager = React.lazy(() => import('./pages/ClientsManager'));
 const LoginPage = React.lazy(() => import('./pages/LoginPage'));
 
 const ControlPanel = React.lazy(() => import('./pages/ControlPanel'));
-const SavedValuations = React.lazy(() => import('./pages/SavedValuations'));
+const InmueblesPage = React.lazy(() => import('./pages/InmueblesPage'));
+const PropertyEditorPage = React.lazy(() => import('./pages/PropertyEditorPage'));
+const PropertyDetailPage = React.lazy(() => import('./components/report/PropertyDetailPage'));
 const CalendarPage = React.lazy(() => import('./pages/CalendarPage'));
 const FilesPage = React.lazy(() => import('./pages/FilesPage'));
 
@@ -41,8 +43,11 @@ function App() {
                 }
               >
                 <Route index element={<ControlPanel />} />
-                <Route path="tasaciones" element={<SavedValuations />} />
-                <Route path="tasaciones/editar" element={<Dashboard />} />
+                <Route path="inmuebles" element={<InmueblesPage />} />
+                <Route path="inmuebles/new" element={<PropertyEditorPage />} />
+                <Route path="inmuebles/:id/edit" element={<PropertyEditorPage />} />
+                <Route path="inmuebles/:inmuebleId" element={<PropertyDetailPage />} />
+                <Route path="inmuebles/editar" element={<Dashboard />} />
                 <Route path="clients" element={<ClientsManager />} />
                 <Route path="archivos" element={<FilesPage />} />
                 <Route path="calendar" element={<CalendarPage />} />

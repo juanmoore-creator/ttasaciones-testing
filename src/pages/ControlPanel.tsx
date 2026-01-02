@@ -10,6 +10,8 @@ import { NotesModal as ClientNotesModal } from '../components/NotesModal';
 import ScheduleMeetingModal from '../components/modals/ScheduleMeetingModal';
 import { useAuth } from '../context/AuthContext';
 import type { Client } from '../types';
+import CotizacionDolar from '../components/CotizacionDolar';
+
 
 declare global {
     interface Window {
@@ -213,7 +215,7 @@ const ControlPanel = () => {
 
     const handleCreateNewValuation = () => {
         handleNewValuation();
-        navigate('/app/tasaciones/editar');
+        navigate('/app/inmuebles/editar');
     };
 
     const formatEventTime = (dateTime?: string) => {
@@ -262,6 +264,8 @@ const ControlPanel = () => {
                 </div>
             </div>
 
+            <CotizacionDolar />
+
             {/* QUICK ACTIONS BAR */}
             <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-8">
                 <button
@@ -277,10 +281,10 @@ const ControlPanel = () => {
                     <Users className="w-5 h-5" /> Nuevo Cliente
                 </button>
                 <button
-                    onClick={() => navigate('/app/tasaciones')}
+                    onClick={() => navigate('/app/inmuebles')}
                     className="flex items-center justify-center gap-2 px-4 py-3 bg-white text-slate-700 rounded-lg shadow-md border border-slate-200 hover:bg-slate-50 transition-colors font-semibold text-lg"
                 >
-                    <FileText className="w-5 h-5" /> Ver Tasaciones
+                    <FileText className="w-5 h-5" /> Ver Inmuebles
                 </button>
             </div>
 
