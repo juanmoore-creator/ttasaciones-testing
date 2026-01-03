@@ -5,15 +5,15 @@ import {
     Users,
     Home,
     CalendarDays,
-    PieChart
+    FolderOpen
 } from 'lucide-react';
 
 const BottomNav = () => {
     const navLinks = [
         {
-            to: '/app/inmuebles/editar', // Mapped to Dashboard.tsx (Valuations)
-            label: 'Dashboard',
-            icon: PieChart
+            to: '/app/inmuebles',
+            label: 'Inmuebles',
+            icon: Home
         },
         {
             to: '/app/clients',
@@ -27,14 +27,14 @@ const BottomNav = () => {
             isMain: true
         },
         {
-            to: '/app/inmuebles',
-            label: 'Inmuebles',
-            icon: Home
-        },
-        {
             to: '/app/calendar',
             label: 'Calendario',
             icon: CalendarDays
+        },
+        {
+            to: '/app/archivos',
+            label: 'Archivos',
+            icon: FolderOpen
         },
     ];
 
