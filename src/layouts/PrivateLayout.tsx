@@ -4,6 +4,8 @@ import { useAuth } from '../context/AuthContext';
 import { LogOut, Home, FolderOpen, Users, CalendarDays, LayoutDashboard, Menu, X } from 'lucide-react';
 
 
+import BottomNav from '../components/BottomNav';
+
 const PrivateLayout = () => {
     const { logout } = useAuth();
     const navigate = useNavigate();
@@ -107,11 +109,11 @@ const PrivateLayout = () => {
                 )}
             </header>
 
-            <main className="flex-1 max-w-7xl w-full mx-auto px-4 sm:px-6 lg:px-8 py-8">
+            <main className="flex-1 max-w-7xl w-full mx-auto px-4 sm:px-6 lg:px-8 py-8 pb-24 md:pb-8">
                 <Outlet />
             </main>
 
-
+            <BottomNav />
         </div>
     );
 };
